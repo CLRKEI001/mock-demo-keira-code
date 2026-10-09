@@ -19,8 +19,14 @@
 // is null, so `name` falls back to the student number.
 export function mapChildRow(r) {
   return {
-    id: r.id,
-    name: r.real_name || r.name,
+    id: r.id,        // Unique user identifier
+
+    // Use the child's real name if recorded; otherwise fall back to the
+    // stored name (which may be an anonymised/pseudonymous label)
+    name: r.real_name || r.name,    // User's full name
+
+    // Use the student number if present; otherwise fall back to name so
+    // the child can still be identified in lists and reports
     studentNumber: r.student_number || r.name,
     dataSource: r.data_source, // "app" | "pilot" | "demo" (mock data for testing)
     school: r.school,
@@ -155,13 +161,13 @@ export function mapMessageRow(r) {
 
 export function mapUserRow(r) {
   return {
-    id: r.id,                    // Firebase Auth UID
-    name: r.name,
-    email: r.email,
-    role: r.role,
-    staffNumber: r.staff_number,
-    isVerified: r.is_verified,
-    createdAt: r.created_at,
+    id: r.id,                // Unique user identifier    // Firebase Auth UID
+    name: r.name,       // User's full name
+    email: r.email,       // Login/contact email address
+    role: r.role,        // Access level (e.g. admin, psychologist, staff)
+    staffNumber: r.staff_number,          // Staff ID (snake_case DB column -> camelCase)
+    isVerified: r.is_verified,           // Whether the account has been verified/approved
+    createdAt: r.created_at,            // Timestamp of account creation
   };
 }
 
