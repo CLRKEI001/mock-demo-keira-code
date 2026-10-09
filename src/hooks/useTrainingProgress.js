@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../services/supabaseClient";
-import { mapTrainingProgressRow } from "../utils/mappers";
+import { mapTrainingCertificateRow } from "../utils/mappers";
 
 // Per-user training progress — see supabase/migrations/015_training_course_tables.sql
 // and 018_training_certificate_approval.sql for training_progress /
