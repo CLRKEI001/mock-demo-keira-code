@@ -66,7 +66,8 @@ function scoreBreakdown(screening) {
     let se = 0;
     let sp = 0;
     for (const q of sec.questions || []) {
-      sp += 2;
+// after
+sp += q.scoringType === "binary" ? 1 : 2;
       const r = responses[q.id];
       if (r && typeof r.score === "number") se += r.score;
     }

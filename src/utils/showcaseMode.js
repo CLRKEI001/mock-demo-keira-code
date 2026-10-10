@@ -18,7 +18,7 @@
 // full screenings or the real norms — don't use them as real results.
 // ─────────────────────────────────────────────────────────────────────────
 
-export const SHOWCASE_MODE = true;
+export const SHOWCASE_MODE = process.env.REACT_APP_SHOWCASE_MODE !== "false";
 
 // The short screener: 4 sections, 2 questions each. Sections and questions
 // are matched by name (so this works whether the content comes from the

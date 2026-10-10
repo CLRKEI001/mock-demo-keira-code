@@ -68,12 +68,12 @@ export function scoreFromAgeTable(table, age, value) {
 const puzzleTimeTable = {
   5: [
     { score: 2, test: (s) => s < 6 * 60 },
-    { score: 1, test: (s) => s >= 7 * 60 - 60 && s <= 13 * 60 }, // 7-13 min
+    { score: 1, test: (s) => s <= 13 * 60 }, // 6-13 min
     { score: 0, test: () => true }, // >14 min
   ],
   6: [
     { score: 2, test: (s) => s < 5 * 60 },
-    { score: 1, test: (s) => s >= 6 * 60 && s <= 12 * 60 },
+    { score: 1, test: (s) => s <= 13 * 60 }, // 5-13 min (no gap after the 2-point band)
     { score: 0, test: () => true }, // >13 min
   ],
 };
@@ -106,13 +106,13 @@ const orangeThingsChecklistTable = {
 const stickTimeTable = {
   5: [
     { score: 2, test: (s) => s < 13 },
-    { score: 1, test: (s) => s >= 14 && s <= 36 },
-    { score: 0, test: (s) => s > 37 },
+    { score: 1, test: (s) => s <= 36 },
+    { score: 0, test: () => true },
   ],
   6: [
     { score: 2, test: (s) => s < 9 },
-    { score: 1, test: (s) => s >= 10 && s <= 32 },
-    { score: 0, test: (s) => s > 33 },
+    { score: 1, test: (s) => s <= 32 },
+    { score: 0, test: () => true },
   ],
 };
 

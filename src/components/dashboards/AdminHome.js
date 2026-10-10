@@ -19,11 +19,12 @@ import ScreenerContentAdmin from "../screener/ScreenerContentAdmin";
 import "./TeacherHome.css";
 import "./AdminHome.css";
 import "../shared/RoleHomeKit.css";
+import { useAnalyticsData } from "../../services/analyticsData";
 
 // Roles an admin can hand out. "admin" is deliberately left out of the
 // reassignment dropdown — promoting/demoting other admins from this list
 // is easy to fat-finger, so that stays a database-level action for now.
-const ASSIGNABLE_ROLES = ["educator", "psychologist", "admin"];
+const ASSIGNABLE_ROLES = ["educator", "psychologist"];
 
 const T = {
   en: {
@@ -426,6 +427,9 @@ export default function AdminHome({ user, profile }) {
   const [roleFilter, setRoleFilter] = useState("");
   const [rejectTarget, setRejectTarget] = useState(null);
 
+  // Derived analytics (children + sessions) — must be called inside the component.
+  const { allChildren, screenedChildren, sessions } = useAnalyticsData();
+
   // Purchase requests ("Buy The Puzzle Box Screener" form submissions)
   const [purchaseRequests, setPurchaseRequests] = useState([]);
   const [reviewRequest, setReviewRequest] = useState(null);   // request currently open in the modal
@@ -646,7 +650,7 @@ export default function AdminHome({ user, profile }) {
   // missing/malformed date.
   const screenedThisPeriod = useMemo(() => {
     const now = new Date();
-    return children.filter((c) => {
+    return (sessions || []).filter((c) => {
       if (!c.date) return false;
       const d = new Date(c.date);
       if (Number.isNaN(d.getTime())) return false;
@@ -655,7 +659,7 @@ export default function AdminHome({ user, profile }) {
         d.getMonth() === now.getMonth()
       );
     }).length;
-  }, [children]);
+  }, [sessions]);
 
   const filteredUsers = users.filter((u) => {
     if (roleFilter && u.role !== roleFilter) return false;
@@ -708,6 +712,9 @@ export default function AdminHome({ user, profile }) {
             title: "You're approved!",
             body: "Your PuzzleBox account is ready — you can sign in now.",
           },
+        })
+        .then(({ error: pushErr }) => {
+          if (pushErr) console.error("Could not send push notification:", pushErr.message);
         })
         .catch((err) => console.error("Could not send push notification:", err.message));
     }
@@ -1580,7 +1587,7 @@ export default function AdminHome({ user, profile }) {
         )}
 
         {activePage === "children" && (
-          <ChildrenTable children={children} lang={lang} />
+          <ChildrenTable children={allChildren} lang={lang} />
         )}
 
         {activePage === "consent-reviews" && (
@@ -1760,7 +1767,7 @@ export default function AdminHome({ user, profile }) {
         )}
 
         {activePage === "reports" && (
-          <SummaryReport children={children} lang={lang} />
+          <SummaryReport children={screenedChildren} lang={lang} />
         )}
 
         {activePage === "profile" && (

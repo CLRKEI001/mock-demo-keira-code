@@ -185,6 +185,10 @@ const [sortOrder, setSortOrder] = useState("highest");
           teacher_email: teacherEmail,
           teacher_name: teacherName,
           diagnosis,
+          recipient_role: "teacher",
+recipient_email: selectedChild.teacherEmail,   // the screening's teacher_email
+screening_id: selectedChild.screeningId,
+message_type: "diagnosis_report",
           language: msgLang,
           sent_by: "Psychologist",
           domains: {
@@ -250,7 +254,8 @@ const [sortOrder, setSortOrder] = useState("highest");
         </div>
         <div className="stat-card c2" style={{ marginBottom: 0 }}>
           <div className="stat-label">{t.referred}</div>
-          <div className="stat-value">{messages.length}</div>
+          
+<div className="stat-value">{filteredChildren.filter(c => c.resolved).length}</div>
           <div className="stat-change">{messages.length} {t.cases}</div>
         </div>
         <div className="stat-card c1" style={{ marginBottom: 0 }}>

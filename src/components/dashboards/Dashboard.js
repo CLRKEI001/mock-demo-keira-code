@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { supabase } from "../../services/supabaseClient";
-import { mapChildRow } from "../../utils/mappers";
+import React, { useState } from "react";
+import { useAnalyticsData } from "../../services/analyticsData";
 import Sidebar from "../shared/Sidebar";
 import Overview from "../analytics/Overview";
 import ChildrenTable from "../analytics/ChildrenTable";
@@ -21,43 +20,10 @@ import SummaryReport from "../analytics/SummaryReport";
 export default function Dashboard({ user }) {
   const [activePage, setActivePage] = useState("overview");
   const [lang, setLang] = useState("en");
-  const [children, setChildren] = useState([]);
 
-  // Load from Supabase, and stay live via Realtime.
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadChildren = async () => {
-      const { data, error } = await supabase
-        .from("children")
-        .select("*")
-        .order("created_at", { ascending: true });
-
-      if (error) {
-        console.error("Error loading children:", error);
-        return;
-      }
-
-      if (isMounted) setChildren((data || []).map(mapChildRow));
-    };
-
-    loadChildren();
-
-    // Realtime: any insert/update/delete on "children" triggers a refetch.
-    // NOTE: Realtime must be enabled for this table — Supabase Dashboard →
-    // Database → Replication → toggle "children" on. See MIGRATION_GUIDE.md.
-    const channel = supabase
-      .channel("children-changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "children" }, () => {
-        loadChildren();
-      })
-      .subscribe();
-
-    return () => {
-      isMounted = false;
-      supabase.removeChannel(channel);
-    };
-  }, []);
+  // One shared, real-data source for every analytics page — the same one the
+  // Admin, Psychologist and Educator dashboards use, so all of them agree.
+  const { loading, error, reload, allChildren, screenedChildren, sessions } = useAnalyticsData();
 
   const langLabels = { en: "EN", af: "AF", xh: "XH" };
 
@@ -91,11 +57,22 @@ export default function Dashboard({ user }) {
           </div>
         </div>
 
-        {activePage === "overview" && <Overview children={children} lang={lang} />}
-        {activePage === "children" && <ChildrenTable children={children} lang={lang} />}
-        {activePage === "results" && <ScreenerResults lang={lang} />}
-        {activePage === "flags" && <FlagsAlerts children={children} lang={lang} />}
-        {activePage === "report" && <SummaryReport children={children} lang={lang} />}
+        {error && (
+          <div style={{ marginBottom: 12, padding: "8px 14px", borderRadius: 8, background: "#FFF3F3", color: "#991040", fontSize: 12, fontWeight: 600 }}>
+            {error} <button className="btn btn-ghost btn-sm" onClick={reload} style={{ marginLeft: 8 }}>Retry</button>
+          </div>
+        )}
+        {loading ? (
+          <div className="card"><div className="empty-state"><div className="empty-state-title">Loading…</div></div></div>
+        ) : (
+          <>
+            {activePage === "overview" && <Overview children={screenedChildren} sessions={sessions} lang={lang} />}
+            {activePage === "children" && <ChildrenTable children={allChildren} lang={lang} />}
+            {activePage === "results" && <ScreenerResults lang={lang} sessions={sessions} />}
+            {activePage === "flags" && <FlagsAlerts children={screenedChildren} lang={lang} />}
+            {activePage === "report" && <SummaryReport children={screenedChildren} lang={lang} />}
+          </>
+        )}
       </div>
     </div>
   );

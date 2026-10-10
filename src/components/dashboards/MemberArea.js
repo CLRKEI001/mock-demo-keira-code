@@ -218,6 +218,7 @@ function ModuleDetail({ user, mod, modules, onBack, onOpenModule, progressApi })
         <h3 style={{ fontFamily: "var(--font-heading)", fontSize: 17, fontWeight: 800, color: COLORS.ink, marginBottom: 4 }}>Checkpoint</h3>
         <p style={{ fontSize: 13, color: COLORS.inkMid, marginBottom: 4 }}>Pass this module's quiz (70% or higher) to mark it complete.</p>
         <TrainingModuleQuiz
+          key={mod.id}
           moduleId={mod.id}
           color={color}
           onResult={handleResult}
@@ -315,7 +316,7 @@ function Training({ user, profile, onCertificateStatusChange }) {
 
   useEffect(() => {
     if (!progressApi.loading && publishedModules.length > 0) {
-      progressApi.issueCertificateIfEligible(publishedModules.map((m) => m.id), user.email, user.displayName);
+      progressApi.issueCertificateIfEligible(publishedModules.map((m) => m.id), user.email, profile?.name || user.displayName);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [progressApi.loading, progressApi.progress, publishedModules.length]);
@@ -354,6 +355,7 @@ function Training({ user, profile, onCertificateStatusChange }) {
     if (mod) {
       return (
         <ModuleDetail
+          key={mod.id}
           user={user}
           mod={mod}
           modules={publishedModules}
@@ -432,7 +434,7 @@ function Training({ user, profile, onCertificateStatusChange }) {
                         Open resource →
                       </a>
                     )}
-                    {isPublished && <TrainingModuleQuiz moduleId={mod.id} color={color} onResult={(outcome) => progressApi.recordQuizResult(mod.id, outcome)} />}
+                    {isPublished && <TrainingModuleQuiz key={mod.id} moduleId={mod.id} color={color} onResult={(outcome) => progressApi.recordQuizResult(mod.id, outcome)} />}
                   </>
                 )}
               </div>
@@ -443,7 +445,7 @@ function Training({ user, profile, onCertificateStatusChange }) {
 
       {progressApi.certificate?.status === "approved" && (
         <TrainingCertificate
-          name={user.displayName || user.email}
+          name={profile?.name || user.displayName || user.email}
           tierLabel={TIER_LABEL[profile?.role]}
           issuedAt={progressApi.certificate.issuedAt}
         />

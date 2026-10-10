@@ -1783,6 +1783,7 @@ export default function TeacherHome({ user, profile, onOpenMember }) {
                       : messages
                           .slice(0, 5)
                           .map((m) => ({
+                            data: m,
                             icon: "envelope",
                             color: "#F26522",
                             title: m.childName,

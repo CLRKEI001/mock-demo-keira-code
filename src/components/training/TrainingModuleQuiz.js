@@ -31,7 +31,9 @@ export default function TrainingModuleQuiz({ moduleId, color, onResult }) {
       (sum, q) => sum + (answers[q.id] === q.correctChoiceId ? q.points : 0),
       0
     );
-    const outcome = { score, total: totalPoints, percent: totalPoints ? Math.round((score / totalPoints) * 100) : 0 };
+    // Pass/fail uses the UNROUNDED percentage: 69.6% must not round up to a pass.
+    const exactPercent = totalPoints ? (score / totalPoints) * 100 : 0;
+    const outcome = { score, total: totalPoints, percent: Math.round(exactPercent), passed: exactPercent >= 70 };
     setResult(outcome);
     // Snapshot exactly which version of each question this attempt was
     // scored against — see migration 023. Without this, editing/publishing
@@ -45,7 +47,7 @@ export default function TrainingModuleQuiz({ moduleId, color, onResult }) {
     // Let the parent (MemberArea's Training flow) persist pass/fail to
     // training_progress — this component stays pure/presentational and
     // keeps working exactly as before when no callback is passed in.
-    if (onResult) onResult({ ...outcome, passed: outcome.percent >= 70, questionVersions });
+    if (onResult) onResult({ ...outcome, questionVersions });
   };
 
   const retake = () => {
@@ -73,7 +75,7 @@ export default function TrainingModuleQuiz({ moduleId, color, onResult }) {
   }
 
   if (result) {
-    const passed = result.percent >= 70;
+    const passed = result.passed;
     return (
       <div style={{ marginTop: 12, padding: "16px 18px", borderRadius: 12, background: passed ? COLORS.tealLight : COLORS.pinkLight }}>
         <div style={{ fontFamily: "var(--font-heading)", fontWeight: 900, fontSize: 18, color: passed ? COLORS.teal : COLORS.pink, marginBottom: 4 }}>
