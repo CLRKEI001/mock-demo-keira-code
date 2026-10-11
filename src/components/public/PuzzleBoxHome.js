@@ -48,7 +48,7 @@ function TiersSection({ onNavigate, onAccess }) {
           title="A tiered system for education and clinical contexts"
           lead="The Puzzle Box Screener is designed for children aged 5 years 0 months to 6 years 11 months, with two levels of administration to support appropriate use in clinical, educational, home-based and community outreach settings."
         />
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 24 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(320px, 100%), 1fr))", gap: 24 }}>
           {TIERS.map(t => (
             <div key={t.label} style={{
               padding: "32px 30px", borderRadius: 20,

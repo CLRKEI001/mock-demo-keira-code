@@ -112,6 +112,11 @@ function useDebouncedSave(fn, delay = 700) {
   }, [delay]);
 }
 
+// Section times are accumulated as fractional seconds; store whole seconds.
+function roundTimes(obj) {
+  return Object.fromEntries(Object.entries(obj || {}).map(([k, v]) => [k, Math.round(v)]));
+}
+
 // Sums up every question's derived score into a raw total.
 function computeRawScore(content, responses) {
   let total = 0;
@@ -200,6 +205,16 @@ export default function PuzzleBoxScreener({ user, profile, onExit, initialChild,
   const [sessionTimerMs, setSessionTimerMs] = useState(0);
   const sessionTimerIntervalRef = useRef(null);
 
+  // Refs used by the timers and submit (see the timer section below).
+  const timerMsRef = useRef(0);               // always the latest timerMs, for cleanup callbacks
+  const lastSectionTickRef = useRef(0);       // wall-clock time of the section timer's last tick
+  const lastTimeBucketRef = useRef(-1);       // which 10-second slot was last SAVED for the section timer
+  const lastSessionBucketRef = useRef(-1);    // same, for the whole-session timer
+  const submittedRef = useRef(false);         // true once Submit starts: no more autosaves
+  const submittingRef = useRef(false);        // blocks a double-click on Submit
+  const submitOkRef = useRef(false);
+  const [submitting, setSubmitting] = useState(false);
+
   // ── Per-section elapsed time ──────────────────────────────────────
   // Most questions are plain 0-2 observational scores with no time of
   // their own — this is how the review screen can still show "how long
@@ -220,7 +235,8 @@ export default function PuzzleBoxScreener({ user, profile, onExit, initialChild,
   // empty/undefined until then, and every place that reads them below
   // is guarded for that (either optional-chained, or the render itself
   // shows a loading state before touching them).
-  const sections = content?.sections || [];
+  timerMsRef.current = timerMs;
+  const sections = useMemo(() => content?.sections || [], [content]);
   const currentSection = sections[sectionIndex];
   // Any section with a time-scored question (section 1's puzzle, section 7's
   // fence sticks, and any added later) gets the timer wired to that
@@ -277,6 +293,7 @@ export default function PuzzleBoxScreener({ user, profile, onExit, initialChild,
     };
     const debounce = setTimeout(run, 250);
     return () => { active = false; clearTimeout(debounce); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, view, user?.uid]);
 
   // ── Deep link: caller handed us a specific child directly ───────────
@@ -350,6 +367,7 @@ export default function PuzzleBoxScreener({ user, profile, onExit, initialChild,
   // ── Start (or resume) the screening session ──────────────────────────
   const beginScreening = async (resume) => {
     setError("");
+    submittedRef.current = false;
     // Defense in depth — the confirm screen's button is already disabled
     // without a verified consent form, but a screening must never actually
     // start without one regardless of how this function gets called.
@@ -429,6 +447,10 @@ export default function PuzzleBoxScreener({ user, profile, onExit, initialChild,
   // ── Autosave ──────────────────────────────────────────────────────
   const persist = useCallback(async (patch) => {
     if (!session?.id) return;
+    // Once Submit has started, nothing may write to the screening any more
+    // (a late autosave could undo the submit, patch a submitted screening,
+    // or recreate an offline draft that was just deleted).
+    if (submittedRef.current) return;
     setSaveStatus("saving");
     if (isOffline) {
       draftRef.current = { ...draftRef.current, ...patch };
@@ -449,10 +471,12 @@ export default function PuzzleBoxScreener({ user, profile, onExit, initialChild,
 
   const debouncedPersist = useDebouncedSave(persist, 700);
 
-  const updateResponse = (questionId, patch) => {
+  // `quiet` = update what's on screen but don't trigger a save (the timers use
+  // this every second; they save once every 10 seconds instead).
+  const updateResponse = (questionId, patch, quiet = false) => {
     setResponses((prev) => {
       const next = { ...prev, [questionId]: { ...prev[questionId], ...patch } };
-      debouncedPersist({ responses: next });
+      if (!quiet) debouncedPersist({ responses: next });
       return next;
     });
   };
@@ -465,13 +489,14 @@ export default function PuzzleBoxScreener({ user, profile, onExit, initialChild,
   // ── Scoring helpers per question type ────────────────────────────
   const setBinary = (q, score) => updateResponse(q.id, { score });
 
-  const setTimeValue = (q, minutes, seconds) => {
-    const mins = Number.isFinite(minutes) ? minutes : 0;
-    const secs = Number.isFinite(seconds) ? seconds : 0;
+  const setTimeValue = (q, minutes, seconds, quiet = false) => {
+    // No negative times (or NaN): they would score as "fastest".
+    const mins = Number.isFinite(minutes) ? Math.max(0, minutes) : 0;
+    const secs = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
     const totalSeconds = mins * 60 + secs;
     const age = selectedChild?.age;
     const score = age && q.ageTable ? scoreFromAgeTable(q.ageTable, age, totalSeconds) : null;
-    updateResponse(q.id, { rawValueSeconds: totalSeconds, score });
+    updateResponse(q.id, { rawValueSeconds: totalSeconds, score }, quiet);
   };
 
   const toggleChecklist = (q, option) => {
@@ -491,45 +516,101 @@ export default function PuzzleBoxScreener({ user, profile, onExit, initialChild,
   // for a manual "Start" click every time — teachers were having to
   // remember to press Start on every single section. Pause/Reset are
   // still there for a genuine interruption.
+  // Timing rules:
+  //  • Time is measured from the CLOCK (Date.now), not by counting ticks, so a
+  //    locked or backgrounded tablet doesn't undercount the times that decide
+  //    the score.
+  //  • A section's timer auto-starts the FIRST time it opens. Coming back to a
+  //    section that already has a recorded time shows that time, paused —
+  //    just looking at it again no longer adds time (it used to turn 20s
+  //    into 35s and flip the score). Press Resume to add more.
+  //  • Nothing is scored until some time has actually elapsed (a 0-second
+  //    puzzle used to be scored as "Passed Confidently").
+  //  • What's on screen updates every second; what's SAVED updates every 10
+  //    seconds, when you pause, and when you leave the section.
+  const runSectionInterval = (sectionId) => {
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+    lastSectionTickRef.current = Date.now();
+    timerIntervalRef.current = setInterval(() => {
+      const now = Date.now();
+      const dt = Math.max(0, now - lastSectionTickRef.current);
+      lastSectionTickRef.current = now;
+      setTimerMs((ms) => ms + dt);
+      if (sectionId) {
+        setSectionTimes((prev) => ({ ...prev, [sectionId]: (prev[sectionId] || 0) + dt / 1000 }));
+      }
+    }, 1000);
+  };
+
+  // Writes the elapsed time into the page's questions (the time-scored one gets
+  // rawValueSeconds + score; the others a plain timeSeconds).
+  const commitTimes = (ms, quiet) => {
+    const totalSeconds = Math.floor(ms / 1000);
+    if (totalSeconds <= 0) return;
+    if (timerQuestion) setTimeValue(timerQuestion, Math.floor(totalSeconds / 60), totalSeconds % 60, quiet);
+    currentSection?.questions.forEach((q) => {
+      if (q.id === timerQuestion?.id) return;
+      updateResponse(q.id, { timeSeconds: totalSeconds }, quiet);
+    });
+    // Only the puzzle section drives puzzle_time_seconds / puzzle_over_time.
+    if (!quiet && currentSection?.isPuzzleTimerSection) {
+      debouncedPersist({
+        puzzle_time_seconds: totalSeconds,
+        puzzle_over_time: totalSeconds > PUZZLE_TIME_LIMIT_SECONDS,
+      });
+    }
+  };
+
   useEffect(() => {
-    if (view !== "form") return;
     if (timerIntervalRef.current) {
       clearInterval(timerIntervalRef.current);
       timerIntervalRef.current = null;
     }
-    setTimerMs(timerQuestion ? (responses[timerQuestion.id]?.rawValueSeconds || 0) * 1000 : 0);
-    setTimerRunning(true);
+    if (view !== "form") {
+      // Left the form (e.g. submitted): stop the timer for good.
+      setTimerRunning(false);
+      return;
+    }
+    const refQ = timerQuestion || currentSection?.questions?.[0];
+    const saved = refQ
+      ? timerQuestion
+        ? responses[refQ.id]?.rawValueSeconds
+        : responses[refQ.id]?.timeSeconds
+      : null;
+    const hasSaved = typeof saved === "number" && saved > 0;
+    lastTimeBucketRef.current = -1;
+    setTimerMs(hasSaved ? saved * 1000 : 0);
     const sectionId = currentSection?.id;
-    timerIntervalRef.current = setInterval(() => {
-      setTimerMs((ms) => ms + 1000);
-      if (sectionId) {
-        setSectionTimes((prev) => ({ ...prev, [sectionId]: (prev[sectionId] || 0) + 1 }));
+    if (hasSaved) {
+      setTimerRunning(false); // revisit: show the recorded time, don't keep adding to it
+    } else {
+      setTimerRunning(true);
+      runSectionInterval(sectionId);
+    }
+    // Leaving the section (or the form): save the time reached so far.
+    return () => {
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
       }
-    }, 1000);
+      if (!submittedRef.current) commitTimes(timerMsRef.current, false);
+    };
     // currentSection?.id is included (not just sectionIndex) because content
-    // loads asynchronously (useScreenerContent) — if this effect's first run
-    // lands before content has arrived, currentSection is still undefined
-    // and sectionId would be captured as undefined forever, since nothing
-    // would ever re-run this effect once content shows up. Re-running when
-    // the id itself changes (content finishes loading, or a real section
-    // change) fixes that without re-running on every unrelated render.
+    // loads asynchronously (useScreenerContent) — see the note in git history.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sectionIndex, view, currentSection?.id]);
 
-  // Clean up the interval if the component unmounts mid-timer.
-  useEffect(() => () => {
-    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
-  }, []);
-
   // ── Continuous overall session timer ─────────────────────────────
-  // Starts the moment the screening form opens (new or resumed) and
-  // keeps ticking across every section change — unlike the per-section
-  // timer above, this one is never reset, so its value at submit time is
-  // "how long the whole screening took".
+  // Starts the moment the screening form opens (new or resumed) and keeps
+  // going across section changes. Clock-based, and stopped when the form closes.
   useEffect(() => {
     if (view !== "form" || !session?.id) return;
+    let last = Date.now();
     sessionTimerIntervalRef.current = setInterval(() => {
-      setSessionTimerMs((ms) => ms + 1000);
+      const now = Date.now();
+      const dt = Math.max(0, now - last);
+      last = now;
+      setSessionTimerMs((ms) => ms + dt);
     }, 1000);
     return () => {
       if (sessionTimerIntervalRef.current) clearInterval(sessionTimerIntervalRef.current);
@@ -537,44 +618,30 @@ export default function PuzzleBoxScreener({ user, profile, onExit, initialChild,
     };
   }, [view, session?.id]);
 
-  // Persists the running total and the per-section breakdown together as
-  // they tick (debounced, same pattern as every other autosaved field) so
-  // "time so far" survives a refresh and resume, not only a clean submit.
-  // These two update on the same 1-second cadence, so they're sent in one
-  // patch rather than two separate debounced calls — debouncedPersist
-  // shares a single pending timer, and two calls in the same tick would
-  // just have the second silently cancel the first.
+  // Saves the running total and the per-section breakdown together, but only
+  // once per 10 seconds (it used to fire a full save every second).
   useEffect(() => {
     if (view !== "form" || !session?.id) return;
-    debouncedPersist({ total_time_seconds: Math.floor(sessionTimerMs / 1000), section_times: sectionTimes });
+    const bucket = Math.floor(sessionTimerMs / 10000);
+    if (bucket === lastSessionBucketRef.current) return;
+    lastSessionBucketRef.current = bucket;
+    debouncedPersist({ total_time_seconds: Math.floor(sessionTimerMs / 1000), section_times: roundTimes(sectionTimes) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionTimerMs, sectionTimes]);
+  }, [sessionTimerMs]);
 
-  // While running, every tick updates the on-screen clock and writes the
-  // elapsed time into every question on the page — the official time-scored
-  // question (if any) gets it in its own rawValueSeconds/score fields (so
-  // scoring still works), and every other question gets a plain
-  // `timeSeconds` field, so nothing on the page is left without a saved
-  // time once the screening is submitted.
+  // Every tick refreshes what's on screen; only every 10th second (or a pause)
+  // is actually saved.
   useEffect(() => {
-    if (!timerRunning) return;
+    if (view !== "form") return;
     const totalSeconds = Math.floor(timerMs / 1000);
-    const mins = Math.floor(totalSeconds / 60);
-    const secs = totalSeconds % 60;
-    if (timerQuestion) setTimeValue(timerQuestion, mins, secs);
-    currentSection?.questions.forEach((q) => {
-      if (q.id === timerQuestion?.id) return;
-      updateResponse(q.id, { timeSeconds: totalSeconds });
-    });
-    // Only the puzzle section itself (isPuzzleTimerSection) drives the
-    // session-level puzzle_time_seconds / puzzle_over_time columns — those
-    // are specifically about the puzzle task, not every timed section.
-    if (currentSection?.isPuzzleTimerSection) {
-      debouncedPersist({
-        puzzle_time_seconds: totalSeconds,
-        puzzle_over_time: totalSeconds > PUZZLE_TIME_LIMIT_SECONDS,
-      });
+    if (totalSeconds <= 0) return;
+    let quiet = false;
+    if (timerRunning) {
+      const bucket = Math.floor(totalSeconds / 10);
+      quiet = bucket === lastTimeBucketRef.current;
+      lastTimeBucketRef.current = bucket;
     }
+    commitTimes(timerMs, quiet);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timerMs, timerRunning]);
 
@@ -584,9 +651,7 @@ export default function PuzzleBoxScreener({ user, profile, onExit, initialChild,
   const startTimer = () => {
     if (timerRunning) return;
     setTimerRunning(true);
-    timerIntervalRef.current = setInterval(() => {
-      setTimerMs((ms) => ms + 1000);
-    }, 1000);
+    runSectionInterval(currentSection?.id);
   };
 
   const pauseTimer = () => {
@@ -600,10 +665,11 @@ export default function PuzzleBoxScreener({ user, profile, onExit, initialChild,
     timerIntervalRef.current = null;
     setTimerRunning(false);
     setTimerMs(0);
-    if (timerQuestion) setTimeValue(timerQuestion, 0, 0);
+    // Clear the recorded time AND its score (0 seconds must not score as a pass).
+    if (timerQuestion) updateResponse(timerQuestion.id, { rawValueSeconds: null, score: null });
     currentSection?.questions.forEach((q) => {
       if (q.id === timerQuestion?.id) return;
-      updateResponse(q.id, { timeSeconds: 0 });
+      updateResponse(q.id, { timeSeconds: null });
     });
   };
 
@@ -619,9 +685,33 @@ export default function PuzzleBoxScreener({ user, profile, onExit, initialChild,
     section.questions.filter((q) => responses[q.id] && typeof responses[q.id].score === "number").length;
 
   // ── Submit ────────────────────────────────────────────────────────
+  // Guarded wrapper: ignores a second click while a submit is running, and
+  // blocks autosaves from the moment Submit starts.
   const doSubmit = async () => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    submittedRef.current = true;
+    submitOkRef.current = false;
+    setSubmitting(true);
+    setError("");
+    try {
+      await doSubmitInner();
+    } finally {
+      if (!submitOkRef.current) submittedRef.current = false; // failed: autosave may resume
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+  };
+
+  const doSubmitInner = async () => {
     const rawScore = computeRawScore(content, responses);
-    const band = computeBand(interpretationBands, selectedChild?.age, rawScore);
+    // A partly finished screening must NOT get a result: skipped questions
+    // count as 0, which would label it "Developmental Concerns". Without a
+    // band it shows as "Not Scored" until it is finished.
+    const band = unansweredCount > 0 ? null : computeBand(interpretationBands, selectedChild?.age, rawScore);
+    const puzzleTime = currentSection?.isPuzzleTimerSection
+      ? { puzzle_time_seconds: Math.floor(timerMs / 1000), puzzle_over_time: Math.floor(timerMs / 1000) > PUZZLE_TIME_LIMIT_SECONDS }
+      : {};
 
     if (isOffline) {
       // Exactly what the online submit writes, plus the message it sends,
@@ -636,7 +726,8 @@ export default function PuzzleBoxScreener({ user, profile, onExit, initialChild,
         interpretation_band: band?.band || null,
         content_snapshot: content,
         total_time_seconds: Math.floor(sessionTimerMs / 1000),
-        section_times: sectionTimes,
+        section_times: roundTimes(sectionTimes),
+        ...puzzleTime,
         // Applied after upload, same as the online submit: move the child's
         // Stage badge to "Processing"
         _childStage: { id: selectedChild.id, stage: "stage3" },
@@ -650,7 +741,7 @@ export default function PuzzleBoxScreener({ user, profile, onExit, initialChild,
           diagnosis:
             // Student number, not the name: psychologists only see student numbers.
             `${teacherName} finished a PuzzleBox screening for ${selectedChild.studentNumber || "a child"} at ${selectedChild.school || "their school"}.` +
-            (band ? ` Result: ${band.label}.` : "") +
+            (band ? ` Result: ${band.label}.` : unansweredCount > 0 ? ` Incomplete: ${unansweredCount} question(s) were not answered, so no result was calculated.` : "") +
             " Open it to review and share the outcome.",
         },
       };
@@ -662,6 +753,7 @@ export default function PuzzleBoxScreener({ user, profile, onExit, initialChild,
         return;
       }
       setShowSubmitConfirm(false);
+      submitOkRef.current = true;
       setView("submitted");
       return;
     }
@@ -677,7 +769,8 @@ export default function PuzzleBoxScreener({ user, profile, onExit, initialChild,
         interpretation_band: band?.band || null,
         content_snapshot: content,
         total_time_seconds: Math.floor(sessionTimerMs / 1000),
-        section_times: sectionTimes,
+        section_times: roundTimes(sectionTimes),
+        ...puzzleTime,
       })
       .eq("id", session.id);
 
@@ -713,7 +806,7 @@ export default function PuzzleBoxScreener({ user, profile, onExit, initialChild,
       diagnosis:
         // Student number, not the name: psychologists only see student numbers.
         `${teacherName} finished a PuzzleBox screening for ${selectedChild.studentNumber || "a child"} at ${selectedChild.school || "their school"}.` +
-        (band ? ` Result: ${band.label}.` : "") +
+        (band ? ` Result: ${band.label}.` : unansweredCount > 0 ? ` Incomplete: ${unansweredCount} question(s) were not answered, so no result was calculated.` : "") +
         " Open it to review and share the outcome.",
       sent_by: "Teacher",
       recipient_role: "psychologist",
@@ -721,6 +814,7 @@ export default function PuzzleBoxScreener({ user, profile, onExit, initialChild,
     });
     if (notifyErr) console.error("Could not notify the psychologist:", notifyErr.message);
 
+    submitOkRef.current = true;
     setShowSubmitConfirm(false);
     setView("submitted");
   };
@@ -1083,9 +1177,10 @@ export default function PuzzleBoxScreener({ user, profile, onExit, initialChild,
                 ? `${unansweredCount} ${t.submitConfirmBody}`
                 : t.submitConfirmBodyComplete}
             </p>
+            {error && <div className="pbs-error">{error}</div>}
             <div className="pbs-confirm-actions">
-              <button className="btn btn-ghost" onClick={() => setShowSubmitConfirm(false)}>{t.cancel}</button>
-              <button className="btn btn-teal" onClick={doSubmit}>{t.confirmSubmit}</button>
+              <button className="btn btn-ghost" onClick={() => setShowSubmitConfirm(false)} disabled={submitting}>{t.cancel}</button>
+              <button className="btn btn-teal" onClick={doSubmit} disabled={submitting}>{submitting ? "Submitting…" : t.confirmSubmit}</button>
             </div>
           </div>
         </div>

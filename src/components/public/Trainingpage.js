@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import {
-  COLORS, FONTS, PUBLIC_FONT_IMPORT, PuzzlePiece, SectionHeading, Navbar, Footer, CallToAction, useIsMobile,
+  COLORS, FONTS, PUBLIC_FONT_IMPORT, PuzzlePiece, SectionHeading, Navbar, Footer, CallToAction, CONTACT_EMAIL, useIsMobile,
 } from "../shared/SiteChrome";
 import { useTrainingModules } from "../../hooks/useTrainingModules.js";
 
@@ -178,7 +178,7 @@ function TierTrainingSection({ onAccess }) {
           <h3 style={{ fontFamily: FONTS.heading, fontSize: 22, fontWeight: 900, color: COLORS.ink, marginBottom: 22 }}>
             {tier.title}
           </h3>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 22 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(280px, 100%), 1fr))", gap: 22 }}>
             {items.map(item => (
               <div key={item.heading} style={{ padding: "18px 20px", borderRadius: 14, background: COLORS.surface }}>
                 <p style={{ fontSize: 11.5, fontWeight: 800, color: tier.color, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
@@ -221,7 +221,7 @@ function HowToAccessSection() {
     <section style={{ padding: isMobile ? "56px 20px" : "90px 40px", background: COLORS.surface }}>
       <div style={{ maxWidth: 1300, margin: "0 auto" }}>
         <SectionHeading eyebrow="Getting started" title="How to access the training" />
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(260px, 100%), 1fr))", gap: 20 }}>
           {steps.map(st => (
             <div key={st.n} style={{ padding: "26px 24px", borderRadius: 16, background: COLORS.white, border: `1px solid ${COLORS.border}`, borderTop: `4px solid ${st.color}` }}>
               <div style={{ width: 38, height: 38, borderRadius: 10, background: st.color, color: COLORS.white, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontFamily: FONTS.heading, marginBottom: 14 }}>{st.n}</div>
@@ -268,7 +268,7 @@ function RequirementsSection({ onApply }) {
           </button>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(260px, 100%), 1fr))", gap: 20 }}>
           {requirements.map(req => (
             <div key={req.title} style={{
               padding: "26px 24px", borderRadius: 16,
@@ -304,7 +304,7 @@ function ModulesSection() {
         {loading ? (
           <p style={{ color: COLORS.inkMid, fontSize: 14 }}>Loading modules…</p>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 18 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(300px, 100%), 1fr))", gap: 18 }}>
             {modules.map((mod, i) => {
               const { color, bg } = moduleColor(mod.colorKey);
               const number = String(mod.sortOrder ?? i + 1).padStart(2, "0");
@@ -351,7 +351,7 @@ function TrainingModesSection({ onStartOnline }) {
       bg: COLORS.tealLight,
       desc: "Attend an in-person training session led by a certified Puzzle Box trainer. Sessions are held at partner schools and institutions across the Eastern Cape and are designed to give you hands-on experience with the physical screener kit.",
       details: ["Full day workshop format", "Hands-on screener practice", "Q&A with certified trainers", "Certificate issued on completion"],
-      cta: "Find a session near you",
+      cta: "Enquire about in-person training",
     },
     {
       type: "Online training",
@@ -371,7 +371,7 @@ function TrainingModesSection({ onStartOnline }) {
           eyebrow="How it works"
           title="Training takes place in these ways..."
         />
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 28 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(340px, 100%), 1fr))", gap: 28 }}>
           {modes.map((mode, i) => (
             <div key={mode.type} style={{
               borderRadius: 20, overflow: "hidden",
@@ -413,7 +413,9 @@ function TrainingModesSection({ onStartOnline }) {
                     </li>
                   ))}
                 </ul>
-                <button onClick={mode.online ? onStartOnline : undefined} style={{
+                <button onClick={mode.online
+                  ? onStartOnline
+                  : () => { window.location.href = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent("In-person training enquiry")}&body=${encodeURIComponent("Hello, I would like to find out about in-person Puzzle Box Screener training near me.")}`; }} style={{
                   padding: "11px 22px", borderRadius: 10,
                   background: mode.color, color: COLORS.white,
                   border: "none", fontSize: 13, fontWeight: 700,

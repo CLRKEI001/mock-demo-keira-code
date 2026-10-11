@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 
 import {
-  COLORS, ON_DARK, FONTS, PUBLIC_FONT_IMPORT, CREAM, Reveal, PuzzlePiece, SectionHeading, Navbar, Footer, CallToAction, piecePath, gridEdges, useInView, useIsMobile, PIECE_BODY, PIECE_PAD, PIECE_VIEWBOX,
+  COLORS, ON_DARK, FONTS, PUBLIC_FONT_IMPORT, CREAM, Reveal, PuzzlePiece, SectionHeading, Navbar, Footer, CallToAction, piecePath, gridEdges, useInView, useIsMobile, PIECE_BODY, PIECE_PAD, PIECE_VIEWBOX, VideoPauseButton,
 } from "../shared/SiteChrome";
 // Hero footage sits directly in src/ so webpack bundles it.
 // hero-puzzle.mp4 = desktop (1280x960), hero-puzzle-mobile.mp4 = phones (720x540, ~3 MB)
@@ -108,7 +108,9 @@ function DomainPuzzle() {
               aria-label={`${d.label}: ${d.desc}`}
               onMouseEnter={() => !touch && setHovered(d.key)}
               onMouseLeave={() => !touch && setHovered(null)}
-              onFocus={() => setHovered(d.key)}
+              // Keyboard focus opens a piece; a tap/click must not (on touch the
+              // focus fired first and the click then toggled it straight shut).
+              onFocus={(e) => { if (e.target.matches?.(":focus-visible")) setHovered(d.key); }}
               onBlur={() => setHovered(null)}
               onClick={() => setHovered(h => (h === d.key ? null : d.key))}
               style={{
@@ -181,7 +183,7 @@ function DomainPuzzle() {
             </>
           ) : (
             <p style={{ fontSize: 13, color: COLORS.inkFaint, lineHeight: 1.6 }}>
-              One screener. Four developmental domains.<br />{touch ? "Tap" : "Hover over"} a piece to explore.
+              One screener. Six developmental domains, grouped into four pieces.<br />{touch ? "Tap" : "Hover over"} a piece to explore.
             </p>
           )}
         </div>
@@ -419,6 +421,7 @@ export function VideoHero({ actions = [] }) {
       ) : (
         <img src={heroPoster} alt="" aria-hidden="true" style={HERO_MEDIA_STYLE} />
       )}
+      {playVideo && <VideoPauseButton />}
 
       {/* Even shade across the frame so centred text reads anywhere */}
       <div style={{
@@ -542,7 +545,7 @@ function WhyWeExist() {
 // ---- 3. What guides us: three pillars, no boxes --------------------------
 const PILLARS = [
   { n: "01", title: "Identify early", color: COLORS.orange, tags: ["Evidence-based", "Structured"], desc: "Catch developmental concerns before they become barriers to learning, using structured evidence-based screening tools." },
-  { n: "02", title: "Reach every child", color: COLORS.pink, tags: ["Multilingual", "Low-connectivity", "9 provinces"], desc: "Multilingual and designed to work in low-connectivity environments across all nine provinces." },
+  { n: "02", title: "Reach every child", color: COLORS.pink, tags: ["Multilingual", "Low-connectivity", "Eastern Cape"], desc: "Multilingual and designed to work in low-connectivity environments, starting in the Eastern Cape." },
   { n: "03", title: "Protect with ethics", color: COLORS.purple, tags: ["POPIA", "HPCSA"], desc: "All child data is anonymised, POPIA-compliant and governed by strict ethical standards aligned with HPCSA guidelines." },
 ];
 
@@ -768,7 +771,7 @@ const cardTint = (color) => `color-mix(in srgb, ${color} 10%, ${COLORS.white})`;
 
 const WHAT_WE_DO = [
   { title: "Puzzle Play", desc: "Lesson plans, multilingual videos and training quizzes so educators can run puzzle-based activities in class.", color: COLORS.pink, bg: cardTint(COLORS.pink), page: "pp-home", cta: "Explore Puzzle Play" },
-  { title: "The Puzzle Box", desc: "Our screener: structured assessments with timers, observation notes and results across four developmental domains.", color: COLORS.teal, bg: cardTint(COLORS.teal), page: "pb-home", cta: "Explore The Puzzle Box",
+  { title: "The Puzzle Box", desc: "Our screener: structured assessments with timers, observation notes and results across six developmental domains.", color: COLORS.teal, bg: cardTint(COLORS.teal), page: "pb-home", cta: "Explore The Puzzle Box",
     img: puzzleBoxSession, imgAlt: "A child fitting pieces into The Puzzle Box frame while a timer runs on a phone beside it" },
   { title: "Research and insight", desc: "Anonymised dashboards and exports for researchers, policy makers and project sponsors.", color: COLORS.purple, bg: cardTint(COLORS.purple), note: "Coming soon" },
 ];
@@ -921,7 +924,7 @@ function VisionSection({ onNavigate }) {
                   : undefined}
                 onMouseEnter={item.inDevelopment ? () => setRevealed(item.title) : undefined}
                 onMouseLeave={item.inDevelopment ? () => setRevealed(null) : undefined}
-                onFocus={item.inDevelopment ? () => setRevealed(item.title) : undefined}
+                onFocus={item.inDevelopment ? (e) => { if (e.target.matches?.(":focus-visible")) setRevealed(item.title); } : undefined}
                 onBlur={item.inDevelopment ? () => setRevealed(null) : undefined}
                 onKeyDown={item.page ? (e) => {
                   if (e.key === "Enter" || e.key === " ") {

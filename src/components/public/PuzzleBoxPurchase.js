@@ -167,30 +167,30 @@ export function PurchaseContent({ user }) {
 
         <form onSubmit={handleSubmit} style={{ display: "grid", gap: 16 }}>
           <div>
-            <label style={labelStyle}>Your name *</label>
-            <input style={fieldStyle} value={form.name} onChange={setField("name")} placeholder="Jane Dlamini" />
+            <label htmlFor="pbp-name" style={labelStyle}>Your name *</label>
+            <input style={fieldStyle} value={form.name} onChange={setField("name")} id="pbp-name" placeholder="Jane Dlamini" />
           </div>
           <div>
-            <label style={labelStyle}>Email *</label>
-            <input type="email" style={fieldStyle} value={form.email} onChange={setField("email")} placeholder="jane@school.org" />
+            <label htmlFor="pbp-email" style={labelStyle}>Email *</label>
+            <input type="email" style={fieldStyle} value={form.email} onChange={setField("email")} id="pbp-email" placeholder="jane@school.org" />
           </div>
           <div>
-            <label style={labelStyle}>Organisation / school *</label>
-            <input style={fieldStyle} value={form.organisation} onChange={setField("organisation")} placeholder="Sunshine Preschool" />
+            <label htmlFor="pbp-org" style={labelStyle}>Organisation / school *</label>
+            <input style={fieldStyle} value={form.organisation} onChange={setField("organisation")} id="pbp-org" placeholder="Sunshine Preschool" />
           </div>
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16 }}>
             <div>
-              <label style={labelStyle}>Contact number</label>
-              <input style={fieldStyle} value={form.phone} onChange={setField("phone")} placeholder="082 000 0000" />
+              <label htmlFor="pbp-phone" style={labelStyle}>Contact number</label>
+              <input style={fieldStyle} value={form.phone} onChange={setField("phone")} id="pbp-phone" placeholder="082 000 0000" />
             </div>
             <div>
-              <label style={labelStyle}>Number of screeners</label>
-              <input type="number" min="1" style={fieldStyle} value={form.numberOfScreeners} onChange={setField("numberOfScreeners")} placeholder="1" />
+              <label htmlFor="pbp-count" style={labelStyle}>Number of screeners</label>
+              <input type="number" min="1" style={fieldStyle} value={form.numberOfScreeners} onChange={setField("numberOfScreeners")} id="pbp-count" placeholder="1" />
             </div>
           </div>
           <div>
-            <label style={labelStyle}>Anything else we should know?</label>
-            <textarea rows={3} style={{ ...fieldStyle, resize: "vertical" }} value={form.message} onChange={setField("message")} placeholder="Optional" />
+            <label htmlFor="pbp-message" style={labelStyle}>Anything else we should know?</label>
+            <textarea rows={3} style={{ ...fieldStyle, resize: "vertical" }} value={form.message} onChange={setField("message")} id="pbp-message" placeholder="Optional" />
           </div>
 
           {error && (

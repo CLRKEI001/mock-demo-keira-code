@@ -143,7 +143,7 @@ const T = {
     statUsers: "Totale Gebruikers",
     statPending: "Wag op Goedkeuring",
     statChildren: "Kinders Geregistreer",
-    statScreened: "Gesif Vanjaar Maand",
+    statScreened: "Gesif Hierdie Maand",
 
     total: "totaal",
     needsAction: "aksie nodig",
@@ -274,9 +274,9 @@ const T = {
     manageUsersSub:
       "Vumela abasebenzi, wabele iindima.",
     viewChildren: "Jonga Bonke Abantwana",
-    viewChildrenSub: "Khangela kwaye uhlungе wonke umntwana obhalisiweyo.",
+    viewChildrenSub: "Khangela kwaye uhlunge wonke umntwana obhalisiweyo.",
 
-    role_educator: "Umfundisi",
+    role_educator: "uThishala",
     role_psychologist: "Isazi Sengqondo",
     role_analyst: "Umhluzi Wedatha",
     role_admin: "Umlawuli",

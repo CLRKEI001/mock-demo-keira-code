@@ -417,6 +417,7 @@ const NAV_BY_SITE = {
     { label: "Puzzle Box Home", page: "pb-home" },
     { label: "How it works", page: "pb-how" },
     { label: "Training", page: "pb-training" },
+    { label: "Purchase", page: "pb-purchase" },
   ],
   pp: [
     { label: "The Puzzle Project", page: "home" },
@@ -508,10 +509,11 @@ export function Navbar({ site = "tpp", current, onNavigate, onLoginClick, overla
       }}>
         {/* Logo always returns to this site's home page. While the nav is
             transparent over the video it switches to the light logo. */}
-        <div onClick={() => handleClick(brand.home)}
-          style={{ cursor: "pointer", display: "flex", alignItems: "center", flexShrink: 0 }}>
+        <button type="button" onClick={() => handleClick(brand.home)}
+          aria-label={`${brand.name} home`}
+          style={{ cursor: "pointer", display: "flex", alignItems: "center", flexShrink: 0, background: "none", border: "none", padding: 0 }}>
           <BrandLogo site={site} height={isMobile ? 125 : 115} width={125} onDark={!solid} />
-        </div>
+        </button>
 
         {!isMobile && (
           <>
@@ -587,10 +589,12 @@ export function Navbar({ site = "tpp", current, onNavigate, onLoginClick, overla
 
       {/* Mobile dropdown panel — slides open below the bar, links stacked full-width */}
       {isMobile && (
-        <div style={{
+        <div aria-hidden={!menuOpen} style={{
           maxHeight: menuOpen ? 480 : 0,
           overflow: "hidden",
-          transition: "max-height 0.28s ease",
+          // visibility removes the closed menu's links from the tab order
+          visibility: menuOpen ? "visible" : "hidden",
+          transition: `max-height 0.28s ease, visibility 0s linear ${menuOpen ? "0s" : "0.28s"}`,
           background: COLORS.white,
           borderTop: menuOpen ? `1px solid ${COLORS.border}` : "1px solid transparent",
         }}>
@@ -638,7 +642,7 @@ export function Footer({ site = "tpp", onNavigate, onLoginClick }) {
       ...(site !== "tpp" ? [{ label: "The Puzzle Project", action: () => onNavigate("home") }] : []),
       { label: "About Us", action: () => onNavigate("about") },
       { label: "Support Our Work", action: () => onNavigate("donate") },
-      { label: "Contact", action: () => onNavigate("about") },
+      { label: "Contact", href: `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent("Enquiry — The Puzzle Project")}` },
     ],
   };
 
@@ -696,8 +700,12 @@ export function Footer({ site = "tpp", onNavigate, onLoginClick }) {
             </p>
             <div style={{ marginTop: 20, padding: "10px 14px", background: "rgba(255,255,255,0.04)", borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)", display: "inline-block" }}>
               <p style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", marginBottom: 2 }}>Contact Gary King</p>
-              <p style={{ fontSize: 12, color: COLORS.teal, fontWeight: 600 }}>gary@picturetree.co.za</p>
-              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>+27 82 557 4713</p>
+              <p style={{ fontSize: 12, fontWeight: 600 }}>
+                <a href={`mailto:${CONTACT_EMAIL}`} style={{ color: COLORS.teal, textDecoration: "none" }}>{CONTACT_EMAIL}</a>
+              </p>
+              <p style={{ fontSize: 12 }}>
+                <a href="tel:+27825574713" style={{ color: "rgba(255,255,255,0.5)", textDecoration: "none" }}>+27 82 557 4713</a>
+              </p>
             </div>
           </div>
           {columns.map(col => (
@@ -705,15 +713,19 @@ export function Footer({ site = "tpp", onNavigate, onLoginClick }) {
               <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(255,255,255,0.28)", marginBottom: 16 }}>
                 {col.heading}
               </p>
-              {col.links.map(l => (
-                <div key={l.label} onClick={l.action}
-                  style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", marginBottom: 10, cursor: "pointer", transition: "color 0.15s" }}
-                  onMouseEnter={e => e.currentTarget.style.color = ON_DARK}
-                  onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.45)"}
-                >
-                  {l.label}
-                </div>
-              ))}
+              {col.links.map(l => {
+                const linkStyle = { display: "block", fontSize: 13, color: "rgba(255,255,255,0.45)", marginBottom: 10, cursor: "pointer", transition: "color 0.15s", background: "none", border: "none", padding: 0, textAlign: "left", fontFamily: "inherit", textDecoration: "none" };
+                const hover = {
+                  onMouseEnter: e => { e.currentTarget.style.color = ON_DARK; },
+                  onMouseLeave: e => { e.currentTarget.style.color = "rgba(255,255,255,0.45)"; },
+                  onFocus: e => { e.currentTarget.style.color = ON_DARK; },
+                  onBlur: e => { e.currentTarget.style.color = "rgba(255,255,255,0.45)"; },
+                };
+                // Real links/buttons (keyboard + screen-reader friendly), not clickable divs.
+                return l.href
+                  ? <a key={l.label} href={l.href} style={linkStyle} {...hover}>{l.label}</a>
+                  : <button key={l.label} type="button" onClick={l.action} style={linkStyle} {...hover}>{l.label}</button>;
+              })}
             </div>
           ))}
         </div>
@@ -843,3 +855,29 @@ export const WARM_PAGE_CSS = `
     .soft-card:hover, .wiggle:hover { transform: none; }
   }
 `;
+
+// Small pause/play control for a looping decorative video (WCAG 2.2.2).
+// Put it inside the same positioned container as the <video>; it finds the
+// video itself, so no ref is needed.
+export function VideoPauseButton({ style = {} }) {
+  const [paused, setPaused] = useState(false);
+  return (
+    <button
+      type="button"
+      aria-label={paused ? "Play background video" : "Pause background video"}
+      onClick={(e) => {
+        const v = e.currentTarget.parentElement?.querySelector("video");
+        if (!v) return;
+        if (v.paused) { v.play(); setPaused(false); } else { v.pause(); setPaused(true); }
+      }}
+      style={{
+        position: "absolute", right: 14, bottom: 14, zIndex: 3,
+        width: 38, height: 38, borderRadius: "50%", border: "1.5px solid rgba(255,255,255,0.7)",
+        background: "rgba(0,0,0,0.45)", color: "#fff", cursor: "pointer", fontSize: 14,
+        display: "flex", alignItems: "center", justifyContent: "center", ...style,
+      }}
+    >
+      {paused ? "▶" : "❚❚"}
+    </button>
+  );
+}

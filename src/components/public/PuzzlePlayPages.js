@@ -51,6 +51,7 @@ function Wrap({ children, style = {} }) {
 }
 
 // The four termly puzzles, snapped together as one 2 x 2 jigsaw
+// eslint-disable-next-line no-unused-vars
 function PuzzleCluster({ size = 400 }) {
   const rows = 2, cols = 2;
   return (

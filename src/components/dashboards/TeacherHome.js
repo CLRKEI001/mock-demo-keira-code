@@ -176,6 +176,7 @@ const T = {
       "View and screen the children in your own class.",
 
     myStudents: "My Class",
+    myStudentsSub: "Children you added or screened — not the full PuzzleBox dataset.",
   
       
 
@@ -431,7 +432,7 @@ const T = {
   },
 
   xh: {
-    roleLabel: "Umfundisi",
+    roleLabel: "uThishala",
 
     navHome: "Ikhaya Lam",
     navMessages: "Imiyalezo",

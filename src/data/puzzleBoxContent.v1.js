@@ -58,7 +58,10 @@ export const DOMAINS = [
 // Helper: look up a score from one of the age tables below.
 // `value` is a raw count or a time-in-seconds figure.
 export function scoreFromAgeTable(table, age, value) {
-  const rows = table[age] || table[6]; // default to the 6-year-old rows if age is unusual
+  // Only ages with a table are scored. (It used to fall back to the age-6 rows
+  // for any other age, giving a score against the wrong norms.)
+  const rows = table[age];
+  if (!rows) return null;
   for (const row of rows) {
     if (row.test(value)) return row.score;
   }

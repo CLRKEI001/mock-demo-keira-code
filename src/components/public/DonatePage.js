@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import {
   COLORS, FONTS, PUBLIC_FONT_IMPORT, WARM_PAGE_CSS, CREAM,
   PageHero, Reveal, PuzzlePiece, piecePath, gridEdges, useInView,
-  Navbar, Footer, CallToAction, CONTACT_EMAIL, useIsMobile,
+  Navbar, Footer, CallToAction, CONTACT_EMAIL, useIsMobile, VideoPauseButton,
 } from "../shared/SiteChrome";
 // Media sits directly in src/, two folders up from this file
 import puzzleDrawing from "../../assets/puzzle-drawing.jpg";   // WIP Puzzle Play drawing from the project brief
@@ -97,11 +97,23 @@ function DonationCard({ id, eyebrow, title, intro, amounts, defaultAmount, accen
               color: COLORS.ink, outline: "none",
             }}
           />
-          <button style={{
+          <button
+            type="button"
+            disabled={!(amountToGive >= 10)}
+            title={amountToGive >= 10 ? undefined : "Choose or enter an amount of R10 or more"}
+            onClick={() => {
+              // No online payment is set up yet, so this opens an email to the
+              // team with the amount filled in; they reply with banking details.
+              const subject = encodeURIComponent(`Donation of ${fmt(amountToGive)} — ${title}`);
+              const body = encodeURIComponent(`Hello,\n\nI would like to donate ${fmt(amountToGive)} towards ${title}. Please send me the banking details.\n\nThank you.`);
+              window.location.href = `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`;
+            }}
+            style={{
+            opacity: amountToGive >= 10 ? 1 : 0.55,
             padding: "14px 34px", borderRadius: 12,
             background: accent, color: COLORS.white,
             border: "none", fontSize: 15, fontWeight: 800,
-            cursor: "pointer", fontFamily: "inherit", transition: "all 0.2s",
+            cursor: amountToGive >= 10 ? "pointer" : "not-allowed", fontFamily: "inherit", transition: "all 0.2s",
             boxShadow: `0 6px 20px color-mix(in srgb, ${accent} 25%, transparent)`,
           }}
             onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; }}
@@ -110,6 +122,9 @@ function DonationCard({ id, eyebrow, title, intro, amounts, defaultAmount, accen
             Donate now
           </button>
         </div>
+        <p style={{ fontSize: 12.5, color: COLORS.inkMid, marginTop: 12 }}>
+          Online payment isn't set up yet — "Donate now" opens an email to our team with your amount, and we'll reply with banking details.
+        </p>
 
         {/* Live impact of the chosen amount (screener only) */}
         {sessions > 0 && (
@@ -268,13 +283,14 @@ function InTheirHands() {
 
         <Reveal delay={0.1} style={{ order: isMobile ? 1 : 2 }}>
           <div style={{
-            borderRadius: 26, overflow: "hidden", aspectRatio: "4 / 3",
+            position: "relative", borderRadius: 26, overflow: "hidden", aspectRatio: "4 / 3",
             boxShadow: "0 22px 50px rgba(60,40,20,0.16)", transform: "rotate(1.5deg)",
             border: `8px solid ${COLORS.white}`,
           }}>
             <video src={donateClip} autoPlay muted loop playsInline preload="metadata"
               aria-label="Children fitting pieces into the finished garden puzzle"
               style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+            <VideoPauseButton />
           </div>
         </Reveal>
       </div>

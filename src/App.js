@@ -327,7 +327,8 @@ function App() {
       <Login
         tier={loginCtx?.tier || null}
         initialMode={loginCtx?.mode || "login"}
-        onBack={() => { setShowLogin(false); setPublicPage("home"); }}
+        // Back returns to the page the visitor opened Login from (Puzzle Box, Puzzle Play…), not always Home.
+        onBack={() => setShowLogin(false)}
         onVerified={async (verifiedProfile) => {
           setProfile(verifiedProfile);
           writeCachedProfile(verifiedProfile);
@@ -341,12 +342,11 @@ function App() {
     );
   }
 
-  const isPlay = publicPage.startsWith("pp-");
   const publicPageProps = {
     onNavigate: setPublicPage,
     // Puzzle Play has its own (not yet built) login page; everything else
     // uses The Puzzle Box login.
-    onNavigateToLogin: isPlay ? () => setPublicPage("pp-login") : openLogin,
+    onNavigateToLogin: openLogin, // Puzzle Play has no login of its own: everyone uses the one sign-in
     onAccess: (tier, mode) => openLogin({ tier, mode }),
   };
 

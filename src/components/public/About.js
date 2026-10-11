@@ -311,12 +311,17 @@ function ImpactSection() {
           <p style={{ color: COLORS.inkMid, fontSize: 17, lineHeight: 1.75, maxWidth: 640, margin: "0 auto" }}>
             See how The Puzzle Project is reaching communities across the Eastern Cape and helping learners grow.
           </p>
+          {SHOW_PLACEHOLDER_NOTE && (
+            <p style={{ display: "inline-block", marginTop: 18, padding: "7px 16px", borderRadius: 999, background: COLORS.white, border: `1.5px dashed ${COLORS.pink}`, color: COLORS.pink, fontSize: 12.5, fontWeight: 800 }}>
+              Illustrative figures — verified programme data is on its way
+            </p>
+          )}
         </Reveal>
 
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 22 : 30 }}>
 
           {/* 1. Reach over time */}
-          <ImpactCard eyebrow="Our reach" stat="2,240+" statLabel="children screened this year" color={COLORS.teal}>
+          <ImpactCard eyebrow="Our reach" stat="2,240+" statLabel="children screened this year (illustrative)" color={COLORS.teal}>
             <ResponsiveContainer width="100%" height={chartH}>
               <AreaChart data={IMPACT_TREND} margin={{ top: 10, right: 8, left: -18, bottom: 0 }}>
                 <defs>
@@ -337,7 +342,7 @@ function ImpactSection() {
           </ImpactCard>
 
           {/* 2. Outcomes donut */}
-          <ImpactCard eyebrow="Learner outcomes" stat="87%" statLabel="of supported learners are showing progress" color={COLORS.purple} delay={0.1}>
+          <ImpactCard eyebrow="Learner outcomes" stat="87%" statLabel="of supported learners are showing progress (illustrative)" color={COLORS.purple} delay={0.1}>
             <div style={{ position: "relative" }}>
               <ResponsiveContainer width="100%" height={chartH}>
                 <PieChart>
@@ -361,12 +366,12 @@ function ImpactSection() {
           </ImpactCard>
 
           {/* 3. Regions map */}
-          <ImpactCard eyebrow="Communities reached" stat="6" statLabel="Eastern Cape regions and growing" color={COLORS.pink} delay={0.05}>
+          <ImpactCard eyebrow="Communities reached" stat="6" statLabel="Eastern Cape regions and growing (illustrative)" color={COLORS.pink} delay={0.05}>
             <EasternCapeMap isMobile={isMobile} />
           </ImpactCard>
 
           {/* 4. Growth after support */}
-          <ImpactCard eyebrow="Growth after support" stat="+25 pts" statLabel="average gain from first screening to follow-up" color={ORANGE} delay={0.15}>
+          <ImpactCard eyebrow="Growth after support" stat="+25 pts" statLabel="average gain from first screening to follow-up (illustrative)" color={ORANGE} delay={0.15}>
             <ResponsiveContainer width="100%" height={chartH}>
               <BarChart data={IMPACT_GROWTH} margin={{ top: 10, right: 6, left: -18, bottom: 0 }} barGap={4}>
                 <CartesianGrid strokeDasharray="4 6" stroke="rgba(0,0,0,0.07)" vertical={false} />
@@ -538,9 +543,9 @@ function ResearchSection() {
 }
 
 // ---- Partners: a simple row, logos drop into the circles -----------------
+// Only real partners / funders belong here. SACE and HPCSA are regulators, not
+// partners — they're mentioned below as the registrations users sign up with.
 const PARTNERS = [
-  { name: "SACE", role: "Credentialing authority for educators" },
-  { name: "HPCSA", role: "Professional body for psychologists" },
   { name: "UCT", role: "Academic development partner" },
 ];
 
@@ -552,7 +557,7 @@ function PartnersSection() {
         <Reveal>
           <SectionHeading align="center" eyebrow="Working together" title="Our partners & funders" />
         </Reveal>
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: isMobile ? 30 : 40 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : `repeat(${PARTNERS.length}, minmax(0, 280px))`, justifyContent: "center", gap: isMobile ? 30 : 40 }}>
           {PARTNERS.map((p, i) => (
             <Reveal key={p.name} delay={i * 0.1} style={{ textAlign: "center" }}>
               {/* Partner logo placeholder: swap for an <img> when logos are available */}
@@ -569,6 +574,9 @@ function PartnersSection() {
             </Reveal>
           ))}
         </div>
+        <p style={{ textAlign: "center", fontSize: 13.5, color: COLORS.inkMid, marginTop: 36, lineHeight: 1.7, maxWidth: 560, marginLeft: "auto", marginRight: "auto" }}>
+          Educators register with SACE and psychologists with HPCSA when they join. These are professional registration bodies, not partners or funders.
+        </p>
       </div>
     </section>
   );
