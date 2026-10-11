@@ -43,7 +43,7 @@ New accounts are **not** active until an admin approves them.
 - **Back end:** [Supabase](https://supabase.com) — Postgres with row-level security, Realtime, Storage and Edge Functions
 - **Sign-in:** Firebase Authentication (its token is passed to Supabase)
 - **Offline / PWA:** Workbox service worker (`src/service-worker.js`) plus an encrypted vault (`src/offline/`)
-- **Hosting:** Vercel or Firebase Hosting (`vercel.json`, `firebase.json`)
+- **Hosting:** Vercel  (`vercel.json`)
 
 ## Project layout
 
