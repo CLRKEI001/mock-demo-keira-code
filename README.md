@@ -47,32 +47,52 @@ New accounts are **not** active until an admin approves them.
 
 ## Project layout
 
+## Project layout
+
+The code is organised into four layers.
+
+| Layer | What it does | Where it lives |
+|---|---|---|
+| **1. Presentation** | The screens people see and use | `src/components/`, `App.js`, `public/` |
+| **2. Business logic** | Screening rules, app state, offline behaviour | `src/hooks/`, `src/data/`, `src/offline/`, `src/services/` (analytics, reports, consent) |
+| **3. Data access** | Talking to Supabase and Firebase | `src/services/supabaseClient.js`, `src/services/firebase.js`, `src/utils/mappers.js` |
+| **4. Back end** | The database and server-side functions | `supabase/` (database, migrations, functions) |
+
 ```
 src/
-  App.js                    routing between public site, login and role dashboards
-  components/
-    public/                 home, About, Donate, Puzzle Box and Puzzle Play pages
-    dashboards/             TeacherHome, PsychologistHome, AdminHome, Dashboard, MemberArea
-    screener/               PuzzleBoxScreener + admin content editor + results
-    analytics/              Overview, Flags, Student Records, Summary Report
-    training/               training modules, quizzes and admin editors
-    translator/             translator chat widget
-    shared/                 site chrome (nav/footer), sidebars, shared UI
-  services/                 analyticsData (the one source of analytics numbers),
-                            reportGenerator, consentForms, push, supabase/firebase clients
-  hooks/                    screener content and training hooks
-  data/                     built-in screener and training content
-  offline/                  offline vault and sync
-  utils/                    row mappers, showcase (demo) mode
-supabase/
-  database/                 SQL for tables, student numbers, access rules (see its README)
-  migrations/               numbered migrations
-  functions/
-    email-notification/     emails each new message
-    send-push/              web-push notifications
-    issue-offline-package/  builds the encrypted offline package
-    translator-chat/        translation helper (Gemini)
+  App.js                    [Presentation] routing between public site, login and role dashboards
+  components/               [Presentation] everything on screen
+    public/                   home, About, Donate, Puzzle Box and Puzzle Play pages
+    dashboards/               TeacherHome, PsychologistHome, AdminHome, Dashboard, MemberArea
+    screener/                 PuzzleBoxScreener + admin content editor + results
+    analytics/                Overview, Flags, Student Records, Summary Report
+    training/                 training modules, quizzes and admin editors
+    translator/               translator chat widget
+    shared/                   site chrome (nav/footer), sidebars, shared UI
+  hooks/                    [Business logic] screener content and training hooks
+  data/                     [Business logic] built-in screener and training content (scoring rules)
+  offline/                  [Business logic] offline vault and sync
+  services/
+    analyticsData.js          [Business logic] the one source of analytics numbers
+    reportGenerator.js        [Business logic] PDF and Excel reports
+    consentForms.js           [Business logic] consent upload and checks
+    push.js                   [Business logic] web-push subscription
+    supabaseClient.js         [Data access] Supabase client (passes the Firebase token)
+    firebase.js               [Data access] Firebase sign-in
+  utils/
+    mappers.js                [Data access] converts database rows to app objects
+    showcaseMode.js           [Business logic] demo (4-section) mode
+supabase/                   [Back end]
+  database/                   SQL for tables, student numbers, access rules (see its README)
+  migrations/                 numbered migrations
+  functions/                  server-side code
+    email-notification/         emails each new message
+    send-push/                  web-push notifications
+    issue-offline-package/      builds the encrypted offline package
+    translator-chat/            translation helper (Gemini)
 ```
+
+> **Note:** Some dashboard screens (for example TeacherHome and AdminHome) also query Supabase directly, so the layers are a guide to the structure, not a strict wall.
 
 ---
 
