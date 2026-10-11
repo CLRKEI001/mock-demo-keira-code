@@ -7,7 +7,8 @@
 import React, { useState, useEffect } from "react";
 import Doodle from "../shared/Doodle";
 import { supabase } from "../../services/supabaseClient";
-import { mapFollowUpRow } from "../../utils/mappers";
+import { mapFollowUpRow, mapChildRow, indexFollowUps, findFollowUp } from "../../utils/mappers";
+import { auth } from "../../services/firebase";
 import { uploadAndVerifyConsentForm, requestManualConsentReview, isOverloadNote } from "../../services/consentForms";
 
 
@@ -311,33 +312,6 @@ const FOLLOW_UP_OPTIONS = [
   "fu6",
 ];
 
-const followUpColors = {
-  fu1: {
-    bg: "#F7F6FF",
-    color: "#8888a8",
-  },
-  fu2: {
-    bg: "#FEF0E7",
-    color: "#F26522",
-  },
-  fu3: {
-    bg: "#FCE6EE",
-    color: "#E8175D",
-  },
-  fu4: {
-    bg: "#E0F5F3",
-    color: "#009B8D",
-  },
-  fu5: {
-    bg: "#F0E8F7",
-    color: "#6B2F8A",
-  },
-  fu6: {
-    bg: "#FEF0E7",
-    color: "#F26522",
-  },
-};
-
 const stageColors = {
   stage1: {
     bg: "#F0EDF8",
@@ -385,6 +359,16 @@ const labelStyle = {
 };
 
 
+// Small inline error message used by the forms below.
+function ErrorNote({ msg }) {
+  if (!msg) return null;
+  return (
+    <div style={{ padding: "10px 14px", background: "var(--pink-lt)", color: "var(--pink)", borderRadius: 10, fontSize: 13, fontWeight: 700, marginBottom: 12 }}>
+      {msg}
+    </div>
+  );
+}
+
 // ============================================================
 // COMPONENT
 // ============================================================
@@ -430,7 +414,13 @@ export default function ChildrenTable({ children, lang }) {
   const [duplicateWarning, setDuplicateWarning] = useState(false);
   const [missingFieldsWarning, setMissingFieldsWarning] = useState(false);
 
-  const [followUps, setFollowUps] = useState({});
+  // { byId, byName } — follow-ups are found by child_id (same for every viewer).
+  const [followUps, setFollowUps] = useState({ byId: {}, byName: {} });
+
+  const [editError, setEditError] = useState("");
+  const [addError, setAddError] = useState("");
+  const [followUpError, setFollowUpError] = useState("");
+  const [deleteError, setDeleteError] = useState("");
 
 
   // ==========================================================
@@ -493,14 +483,8 @@ export default function ChildrenTable({ children, lang }) {
         return;
       }
 
-      const map = {};
-
-      data.forEach(row => {
-        map[row.child_name] = mapFollowUpRow(row);
-      });
-
       if (isMounted) {
-        setFollowUps(map);
+        setFollowUps(indexFollowUps((data || []).map(mapFollowUpRow)));
       }
     };
 
@@ -508,7 +492,7 @@ export default function ChildrenTable({ children, lang }) {
 
 
     const channel = supabase
-      .channel("follow-ups-changes-children")
+      .channel("follow-ups-changes-children-" + Math.random().toString(36).slice(2))
       .on(
         "postgres_changes",
         {
@@ -540,7 +524,7 @@ export default function ChildrenTable({ children, lang }) {
     if (selected) {
 
       setExistingFollowUp(
-        followUps[selected.name] || null
+        findFollowUp(followUps, selected)
       );
 
     } else {
@@ -595,6 +579,10 @@ export default function ChildrenTable({ children, lang }) {
     setUploadedFile(null);
     setUploadedFileURL(null);
     setUploadedFileType(null);
+
+    setEditError("");
+    setFollowUpError("");
+    setDeleteError("");
 
     // Reset editing state
     setIsEditing(false);
@@ -666,100 +654,107 @@ export default function ChildrenTable({ children, lang }) {
 
   // ==========================================================
   // SAVE EDITED CHILD
+  //
+  // Only the fields the user actually changed are sent. (The edit copy holds
+  // values DERIVED from the latest screening — total, status, flagged, date,
+  // examiner — which must never be written back into the legacy columns, and
+  // which a psychologist's database rules would reject.)
   // ==========================================================
+
+  const EDITABLE_FIELDS = [
+    "name", "school", "province", "age", "gender", "language",
+    "date", "examiner", "stage",
+  ];
 
   const handleSaveEdit = async () => {
 
     if (!selected || !editChild) return;
 
+    setEditError("");
+
     if (!editChild.name || !editChild.school) {
+      setEditError("Child ID and school are required.");
       return;
     }
 
+    const changes = {};
 
-    // --------------------------------------------------------
-    // Check for another child with the same name
-    // --------------------------------------------------------
+    EDITABLE_FIELDS.forEach(field => {
+      const before = selected[field] ?? "";
+      const after = editChild[field] ?? "";
+      if (String(before) !== String(after)) changes[field] = editChild[field];
+    });
 
-    const { data: existing, error: checkError } =
-      await supabase
-        .from("children")
-        .select("id")
-        .eq("name", editChild.name)
-        .neq("id", selected.id);
+    if ("age" in changes) {
+      const n = parseInt(changes.age, 10);
+      if (Number.isNaN(n) || n < 0 || n > 18) {
+        setEditError("Please enter a valid age in years.");
+        return;
+      }
+      changes.age = n;
+    }
 
-
-    if (checkError) {
-
-      console.error(
-        "Error checking duplicate child:",
-        checkError
-      );
-
+    if (Object.keys(changes).length === 0) {
+      // Nothing changed: just leave edit mode.
+      setIsEditing(false);
+      setEditChild(null);
       return;
     }
 
+    // Check for another child with the same name (only if renamed)
+    if ("name" in changes) {
 
-    if (existing && existing.length > 0) {
+      const { data: existing, error: checkError } =
+        await supabase
+          .from("children")
+          .select("id")
+          .eq("name", changes.name)
+          .neq("id", selected.id);
 
-      setEditDuplicateWarning(true);
+      if (checkError) {
+        console.error("Error checking duplicate child:", checkError);
+        setEditError("Could not check for duplicates: " + checkError.message);
+        return;
+      }
 
-      return;
-
+      if (existing && existing.length > 0) {
+        setEditDuplicateWarning(true);
+        return;
+      }
     }
 
-
-    // --------------------------------------------------------
-    // Prepare database update
-    // --------------------------------------------------------
-
-    const updateData = {
-      name: editChild.name,
-      school: editChild.school,
-      province: editChild.province,
-      age: parseInt(editChild.age) || 5,
-      gender: editChild.gender,
-      language: editChild.language,
-      date: editChild.date,
-      examiner: editChild.examiner,
-      stage: editChild.stage,
-      flagged: editChild.flagged ?? false,
-      total: editChild.total ?? 0,
-      status: editChild.status || "Progressing",
-    };
-
-
-    // --------------------------------------------------------
     // Update Supabase
-    // --------------------------------------------------------
-
-    const { data, error } = await supabase
+    const { data: updatedRows, error } = await supabase
       .from("children")
-      .update(updateData)
+      .update(changes)
       .eq("id", selected.id)
-      .select()
-      .single();
-
+      .select("id");
 
     if (error) {
-
-      console.error(
-        "Error updating child:",
-        error
-      );
-
+      console.error("Error updating child:", error);
+      setEditError("Could not save: " + error.message);
       return;
     }
 
+    if (!updatedRows || updatedRows.length === 0) {
+      setEditError("Nothing was saved — you may not have permission to edit this child.");
+      return;
+    }
 
-    // --------------------------------------------------------
-    // Update local selected child
-    // --------------------------------------------------------
+    // Refresh the selected child through the same mapper every list uses (so
+    // camelCase fields, consent state and the real name stay intact), keeping
+    // the derived screening fields.
+    const { data: fresh } = await supabase
+      .from("children_named")
+      .select("*")
+      .eq("id", selected.id)
+      .maybeSingle();
 
-    const updatedChild = data || {
-      ...selected,
-      ...updateData,
-    };
+    const mapped = fresh ? mapChildRow(fresh) : null;
+    const updatedChild = { ...selected };
+    Object.keys(changes).forEach(field => {
+      updatedChild[field] = mapped && mapped[field] !== undefined ? mapped[field] : changes[field];
+    });
 
     setSelected(updatedChild);
 
@@ -768,7 +763,6 @@ export default function ChildrenTable({ children, lang }) {
     setEditDuplicateWarning(false);
 
     setEditSaved(true);
-
 
     // Leave edit mode shortly after success
     setTimeout(() => {
@@ -859,7 +853,8 @@ export default function ChildrenTable({ children, lang }) {
       consentUploadedAt: result.uploadedAt,
       consentVerified: result.valid,
       consentVerificationNotes: result.notes,
-      consentVerifiedAt: result.uploadedAt,
+      consentVerifiedAt: result.verifiedAt,
+      consentReviewStatus: null,
     }));
 
     setConsentMissingFields(result.missingFields || []);
@@ -877,19 +872,12 @@ export default function ChildrenTable({ children, lang }) {
 
   const handleAddChild = async () => {
 
-    const requiredFields = [
-      "name",
-      "school",
-      "province",
-      "age",
-      "examiner",
-      "date",
-    ];
+    setAddError("");
+
+    const requiredFields = ["name", "school", "province", "age", "examiner", "date"];
 
     const hasMissingFields = requiredFields.some(
-      field =>
-        !newChild[field] ||
-        !String(newChild[field]).trim()
+      field => !newChild[field] || !String(newChild[field]).trim()
     );
 
     if (hasMissingFields) {
@@ -897,8 +885,14 @@ export default function ChildrenTable({ children, lang }) {
       return;
     }
 
-    setMissingFieldsWarning(false);
+    const ageNum = parseInt(newChild.age, 10);
 
+    if (Number.isNaN(ageNum) || ageNum < 0 || ageNum > 18) {
+      setAddError("Please enter a valid age in years.");
+      return;
+    }
+
+    setMissingFieldsWarning(false);
 
     const { data: existing, error: checkError } =
       await supabase
@@ -906,47 +900,30 @@ export default function ChildrenTable({ children, lang }) {
         .select("id")
         .eq("name", newChild.name);
 
-
     if (checkError) {
-
-      console.error(
-        "Error checking for duplicate child:",
-        checkError
-      );
-
+      console.error("Error checking for duplicate child:", checkError);
+      setAddError("Could not check for duplicates: " + checkError.message);
       return;
     }
-
 
     if (existing.length > 0) {
-
       setDuplicateWarning(true);
-
       return;
-
     }
-
 
     const { error: insertError } =
       await supabase
         .from("children")
         .insert({
           ...newChild,
-          age: parseInt(newChild.age) || 5,
+          age: ageNum,
         });
 
-
     if (insertError) {
-
-      console.error(
-        "Error adding child:",
-        insertError
-      );
-
+      console.error("Error adding child:", insertError);
+      setAddError("Could not add the child: " + insertError.message);
       return;
-
     }
-
 
     setShowAdd(false);
 
@@ -978,46 +955,29 @@ export default function ChildrenTable({ children, lang }) {
 
     if (!selected?.id) return;
 
+    setDeleteError("");
+
+    // Remove this child's follow-up first (by child id), then the child.
+    const { error: fuError } =
+      await supabase
+        .from("follow_ups")
+        .delete()
+        .eq("child_id", selected.id);
+
+    if (fuError) {
+      console.error("Error deleting follow-up:", fuError);
+    }
 
     const { error } = await supabase
       .from("children")
       .delete()
       .eq("id", selected.id);
 
-
     if (error) {
-
-      console.error(
-        "Error deleting child:",
-        error
-      );
-
+      console.error("Error deleting child:", error);
+      setDeleteError("Could not delete: " + error.message);
       return;
-
     }
-
-
-    // Delete associated follow-up
-    if (existingFollowUp?.docId) {
-
-      const { error: fuError } =
-        await supabase
-          .from("follow_ups")
-          .delete()
-          .eq("id", existingFollowUp.docId);
-
-
-      if (fuError) {
-
-        console.error(
-          "Error deleting follow-up:",
-          fuError
-        );
-
-      }
-
-    }
-
 
     setSelected(null);
 
@@ -1036,46 +996,39 @@ export default function ChildrenTable({ children, lang }) {
       return;
     }
 
+    setFollowUpError("");
 
     const followUpData = {
-
-      child_name: selected.name,
-
+      // Student number, not the real name: this column is readable by admins.
+      child_name: selected.studentNumber || selected.name,
       child_id: selected.id,
-
       school: selected.school,
-
       follow_up_date: followUpDate,
-
       follow_up_psych: followUpPsych,
-
       follow_up_reason: followUpReason,
-
       follow_up_type: followUpType,
-
       updated_at: new Date().toISOString(),
-
     };
-
 
     if (existingFollowUp?.docId) {
 
-      const { error } =
+      const { data: updated, error } =
         await supabase
           .from("follow_ups")
           .update(followUpData)
-          .eq("id", existingFollowUp.docId);
-
+          .eq("id", existingFollowUp.docId)
+          .select("id");
 
       if (error) {
-
-        console.error(
-          "Error updating follow-up:",
-          error
-        );
-
+        console.error("Error updating follow-up:", error);
+        setFollowUpError("Could not save the follow-up: " + error.message);
         return;
+      }
 
+      // Row rules can silently match zero rows (e.g. it belongs to another psychologist).
+      if (!updated || updated.length === 0) {
+        setFollowUpError("The follow-up was not saved — only the psychologist who owns it (or an admin) can change it.");
+        return;
       }
 
     } else {
@@ -1085,43 +1038,28 @@ export default function ChildrenTable({ children, lang }) {
           .from("follow_ups")
           .insert(followUpData);
 
-
       if (error) {
-
-        console.error(
-          "Error creating follow-up:",
-          error
-        );
-
+        console.error("Error creating follow-up:", error);
+        setFollowUpError("Could not save the follow-up: " + error.message);
         return;
-
       }
 
     }
 
-
-    // Update screening sessions
+    // Keep the legacy session rows in step (matched by child id).
     const { error: sessionError } =
       await supabase
         .from("screening_sessions")
         .update({
           follow_up_stage: followUpType,
         })
-        .eq("child_name", selected.name);
-
+        .eq("child_id", selected.id);
 
     if (sessionError) {
-
-      console.error(
-        "Error updating session follow-up stage:",
-        sessionError
-      );
-
+      console.error("Error updating session follow-up stage:", sessionError);
     }
 
-
     setFollowUpSaved(true);
-
 
     setTimeout(() => {
 
@@ -1152,25 +1090,25 @@ export default function ChildrenTable({ children, lang }) {
       return;
     }
 
+    setFollowUpError("");
 
-    const { error } =
+    const { data: removed, error } =
       await supabase
         .from("follow_ups")
         .delete()
-        .eq("id", existingFollowUp.docId);
-
+        .eq("id", existingFollowUp.docId)
+        .select("id");
 
     if (error) {
-
-      console.error(
-        "Error deleting follow-up:",
-        error
-      );
-
+      console.error("Error deleting follow-up:", error);
+      setFollowUpError("Could not remove the follow-up: " + error.message);
       return;
-
     }
 
+    if (!removed || removed.length === 0) {
+      setFollowUpError("The follow-up was not removed — only the psychologist who owns it (or an admin) can remove it.");
+      return;
+    }
 
     const { error: sessionError } =
       await supabase
@@ -1178,18 +1116,11 @@ export default function ChildrenTable({ children, lang }) {
         .update({
           follow_up_stage: "fu1",
         })
-        .eq("child_name", selected.name);
-
+        .eq("child_id", selected.id);
 
     if (sessionError) {
-
-      console.error(
-        "Error resetting session follow-up stage:",
-        sessionError
-      );
-
+      console.error("Error resetting session follow-up stage:", sessionError);
     }
-
 
     setExistingFollowUp(null);
 
@@ -1358,7 +1289,7 @@ export default function ChildrenTable({ children, lang }) {
                     ];
 
                   const hasFollowUp =
-                    !!followUps[child.name];
+                    !!findFollowUp(followUps, child);
 
 
                   return (
@@ -1953,6 +1884,8 @@ export default function ChildrenTable({ children, lang }) {
                 </div>
 
 
+                <ErrorNote msg={editError} />
+
                 {/* SAVE SUCCESS */}
 
                 {editSaved && (
@@ -2543,6 +2476,8 @@ export default function ChildrenTable({ children, lang }) {
                         </div>
 
 
+                        <ErrorNote msg={followUpError} />
+
                         {followUpSaved && (
 
                           <div
@@ -2662,6 +2597,7 @@ export default function ChildrenTable({ children, lang }) {
                         >
                           {t.deleteConfirm}
                         </div>
+                        <ErrorNote msg={deleteError} />
 
 
                         <div
@@ -2787,7 +2723,7 @@ export default function ChildrenTable({ children, lang }) {
                             className="btn btn-sm btn-primary"
                             onClick={async () => {
                               try {
-                                await requestManualConsentReview({ childId: selected.id });
+                                await requestManualConsentReview({ childId: selected.id, requestedBy: auth?.currentUser?.email || null });
                                 setSelected((prev) => prev && ({ ...prev, consentReviewStatus: "pending" }));
                               } catch (e) { setConsentError(e.message); }
                             }}
@@ -3134,6 +3070,8 @@ export default function ChildrenTable({ children, lang }) {
 
             </div>
 
+
+            <ErrorNote msg={addError} />
 
             {/* MISSING REQUIRED FIELDS WARNING */}
 

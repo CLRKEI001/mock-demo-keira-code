@@ -6,6 +6,7 @@ import {
 import KPICards from "./KPICards";
 import { downloadPDF, downloadExcel } from "../../services/reportGenerator";
 import SchoolsMap from "./SchoolsMap";
+import { DOMAIN_BENCHMARK, STATUS, isActiveFlag, avgOf } from "../../services/analyticsData";
 
 const T = {
   en: {
@@ -13,17 +14,20 @@ const T = {
     thisWeek: "this week", requireFollowUp: "require follow-up", aboveAverage: "above average",
     perfByDomain: "Performance by Domain", allChildren: "All children",
     resultsDist: "Results Distribution", breakdown: "Breakdown",
-    byLanguage: "Language of Assessment", bySchool: "Schools & Regions",
+    byLanguage: "Home Language", bySchool: "Schools & Regions",
     byAge: "Age Distribution", byGender: "Gender Split",
     devConcerns: "Developmental Concerns", progressing: "Monitor Needed",
     cognitive: "Cognitive", motor: "Fine Motor", language: "Language", social: "Social", emotion: "Emotion", moral: "Moral",
-    fiveYr: "5 years", sixYr: "6 years", girls: "Girls", boys: "Boys",
+    years: "years", girls: "Girls", boys: "Boys", unknown: "Unknown", notScored: "Not Scored",
     monthlyTrend: "Monthly Screening Trend", screenings: "Screenings",
     benchmark: "Benchmark", lastUpdated: "Last updated",
     compareBy: "Compare by", overall: "Overall", school: "School", age: "Age", gender: "Gender", langLabel: "Language",
     keyInsights: "Key insights",
     summaryUrgent: (n) => `${n} ${n === 1 ? "child requires" : "children require"} urgent follow-up.`,
     summaryAllGood: "All screened children are currently on track.",
+    summaryNoFlags: (onTrack, progressing, total) =>
+      `No children are flagged. ${onTrack} of ${total} are on track and ${progressing} ${progressing === 1 ? "needs" : "need"} monitoring or are not yet scored.`,
+    noData: "No screenings yet",
     summaryMixed: (flagged, onTrack, total) =>
       `${onTrack} of ${total} children are on track. ${flagged} ${flagged === 1 ? "child has" : "children have"} been flagged for follow-up.`,
     eastCapePilot: "Eastern Cape pilot · All screened children",
@@ -33,17 +37,20 @@ const T = {
     thisWeek: "hierdie week", requireFollowUp: "benodig opvolg", aboveAverage: "bo gemiddeld",
     perfByDomain: "Prestasie per Domein", allChildren: "Alle kinders",
     resultsDist: "Resultaatverspreiding", breakdown: "Uiteensetting",
-    byLanguage: "Taal van Assessering", bySchool: "Skole & Streke",
+    byLanguage: "Huistaal", bySchool: "Skole & Streke",
     byAge: "Ouderdomsverdeling", byGender: "Geslagsverdeling",
     devConcerns: "Ontwikkelingsbekommernisse", progressing: "Monitering Benodig",
     cognitive: "Kognitief", motor: "Fyn Motories", language: "Taal", social: "Sosiaal", emotion: "Emosie", moral: "Moreel",
-    fiveYr: "5 jaar", sixYr: "6 jaar", girls: "Meisies", boys: "Seuns",
+    years: "jaar", girls: "Meisies", boys: "Seuns", unknown: "Onbekend", notScored: "Nie Gepunt Nie",
     monthlyTrend: "Maandelikse Siftingsneiging", screenings: "Siftings",
     benchmark: "Teiken", lastUpdated: "Laas opgedateer",
     compareBy: "Vergelyk per", overall: "Algeheel", school: "Skool", age: "Ouderdom", gender: "Geslag", langLabel: "Taal",
     keyInsights: "Sleutelinsigte",
     summaryUrgent: (n) => `${n} ${n === 1 ? "kind benodig" : "kinders benodig"} dringende opvolg.`,
     summaryAllGood: "Alle gesifde kinders is tans op koers.",
+    summaryNoFlags: (onTrack, progressing, total) =>
+      `Geen kinders is gevlag nie. ${onTrack} van ${total} is op koers en ${progressing} benodig monitering of is nog nie gepunt nie.`,
+    noData: "Nog geen siftings nie",
     summaryMixed: (flagged, onTrack, total) =>
       `${onTrack} van ${total} kinders is op koers. ${flagged} ${flagged === 1 ? "kind is" : "kinders is"} gevlag vir opvolg.`,
     eastCapePilot: "Oos-Kaap loodsprojek · Alle gesifde kinders",
@@ -53,17 +60,20 @@ const T = {
     thisWeek: "evekini", requireFollowUp: "zifuna ukulandelwa", aboveAverage: "ngaphezulu kwemvg",
     perfByDomain: "Indlela Ngomhlaba", allChildren: "Bonke abantwana",
     resultsDist: "Ukusasazwa Kweziphumo", breakdown: "Uhlalutyo",
-    byLanguage: "Ulwimi Lokuhlolwa", bySchool: "Izikolo & Iindawo",
+    byLanguage: "Ulwimi Lasekhaya", bySchool: "Izikolo & Iindawo",
     byAge: "Ukusasazwa Ngeminyaka", byGender: "Ukwahlulwa ngesini",
     devConcerns: "Iingxaki Zentlalo", progressing: "Ukulandela Kuyadingeka",
     cognitive: "Ukucinga", motor: "Amandla", language: "Ulwimi", social: "Uluntu", emotion: "Imvakalelo", moral: "Isimo",
-    fiveYr: "5 iminyaka", sixYr: "6 iminyaka", girls: "Amantombazana", boys: "Abafana",
+    years: "iminyaka", girls: "Amantombazana", boys: "Abafana", unknown: "Akwaziwa", notScored: "Ayinamanqaku",
     monthlyTrend: "Inqwelomoya Yenyanga", screenings: "Ukuhlolwa",
     benchmark: "Umgomo", lastUpdated: "Uhlaziwe",
     compareBy: "Thelekisa nge", overall: "Jikelele", school: "Isikolo", age: "Iminyaka", gender: "Isini", langLabel: "Ulwimi",
     keyInsights: "Iingcinga ezibalulekileyo",
     summaryUrgent: (n) => `${n} ${n === 1 ? "umntwana udinga" : "abantwana badinga"} ukulandelwa ngokukhawuleza.`,
     summaryAllGood: "Bonke abantwana abahloliweyo basendleleni.",
+    summaryNoFlags: (onTrack, progressing, total) =>
+      `Akukho mntwana ukhombiweyo. ${onTrack} kwa ${total} basendleleni kwaye ${progressing} badinga ukubekwa esweni okanye abakabi namanqaku.`,
+    noData: "Akukabikho kuhlolwa",
     summaryMixed: (flagged, onTrack, total) =>
       `${onTrack} kwa ${total} abantwana basendleleni. ${flagged} ${flagged === 1 ? "umntwana ukhombiwe" : "abantwana bakhombiwe"} ukuze balandelwe.`,
     eastCapePilot: "Isifundo seMpuma-Koloni · Bonke abantwana abahloliweyo",
@@ -76,30 +86,36 @@ const STATUS_DESCRIPTIONS = {
     "On Track": "Child is developing as expected for their age with no concerns.",
     "Monitor Needed": "Child is progressing but may need additional support or observation.",
     "Developmental Concerns": "Child has been flagged and requires follow-up or intervention.",
+    "Not Scored": "No age-based result could be worked out for this screening (for example an unsupported age).",
   },
   af: {
     "Op Koers": "Kind ontwikkel soos verwag vir hul ouderdom sonder bekommernisse.",
     "Monitering Benodig": "Kind vorder maar mag ekstra ondersteuning of waarneming benodig.",
     "Ontwikkelingsbekommernisse": "Kind is gevlag en benodig opvolg of ingryping.",
+    "Nie Gepunt Nie": "Geen ouderdomsgebaseerde uitslag kon bepaal word nie (bv. 'n nie-ondersteunde ouderdom).",
   },
   xh: {
     "Esendleleni": "Umntwana uyakhula ngendlela elindelekileyo ngokulingana neminyaka yakhe.",
     "Ukulandela Kuyadingeka": "Umntwana uyaqhubeka kodwa angadinga inkxaso eyongezelelekileyo.",
     "Iingxaki Zentlalo": "Umntwana ukhombiwe kwaye udinga ukulandelwa okanye ukungenelela.",
+    "Ayinamanqaku": "Akukho siphumo silinganiswe ngeminyaka sinokubalwa kolu hlolo.",
   },
 };
-// Scores are points earned out of the maximum (0/1/2 per question), so a
-// child who simply Passes everything sits at ~50%.
-const DOMAIN_BENCHMARK = 50;
+// Scores are points earned out of each question's true maximum (binary = 1,
+// age-table/checklist = 2). The benchmark is shared with the PDF/Excel export
+// (see DOMAIN_BENCHMARK in services/analyticsData.js).
 const DOMAIN_KEYS = ["cognitive", "motor", "language_score", "social", "emotion", "moral"];
 const GROUP_COLORS = ["#009B8D", "#6B2F8A", "#F26522", "#E8175D", "#378ADD", "#639922"];
 
+// null (not 0) when nobody in the group has a score for this domain.
 function domainAvgForGroup(group, key) {
-  if (!group.length) return 0;
-  return Math.round(group.reduce((a, c) => a + (c[key] || 0), 0) / group.length);
+  return avgOf(group, key);
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
 function DomainTooltip({ name, value, color }) {
+  if (value === null || value === undefined) return null;
   const above = value >= DOMAIN_BENCHMARK;
   return (
     <div style={{ background: "#fff", border: "1px solid #eee", borderRadius: 8, padding: "8px 12px", fontSize: 12, boxShadow: "0 2px 8px rgba(0,0,0,0.1)", minWidth: 160 }}>
@@ -113,19 +129,20 @@ function DomainTooltip({ name, value, color }) {
   );
 }
 
-export default function Overview({ children, lang }) {
-  const t = T[lang];
+export default function Overview({ children, lang, sessions }) {
+  const t = T[lang] || T.en;
   const [hoveredDomain, setHoveredDomain] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [compareMode, setCompareMode] = useState("overall");
 
   const total = children.length;
-  const flagged = children.filter(c => c.flagged).length;
-  const onTrack = children.filter(c => c.status === "On Track").length;
-  const avgScore = total > 0 ? Math.round(children.reduce((a, c) => a + (c.total || 0), 0) / total) : 0;
+  const flagged = children.filter(isActiveFlag).length;
+  const onTrack = children.filter(c => c.status === STATUS.ON_TRACK).length;
+  const avgScore = avgOf(children, "total") ?? 0;
 
   const summaryText = total === 0 ? ""
-    : flagged === 0 ? t.summaryAllGood
+    : flagged === 0 && onTrack === total ? t.summaryAllGood
+    : flagged === 0 ? t.summaryNoFlags(onTrack, total - onTrack, total)
     : flagged >= total * 0.5 ? t.summaryUrgent(flagged)
     : t.summaryMixed(flagged, onTrack, total);
 
@@ -140,18 +157,19 @@ export default function Overview({ children, lang }) {
     value: domainAvgForGroup(children, key),
     color: Object.values(COLORS)[i % 4],
   }));
+  const compareEmpty = total === 0;
 
   // Get unique group values for compare mode
   const getGroups = () => {
-    if (compareMode === "school") return [...new Set(children.map(c => c.school).filter(Boolean))].map(s => s.split(" ")[0]);
-    if (compareMode === "age") return [5, 6];
-    if (compareMode === "gender") return ["Female", "Male"];
+    if (compareMode === "school") return [...new Set(children.map(c => c.school).filter(Boolean))].sort();
+    if (compareMode === "age") return [...new Set(children.map(c => c.age).filter(a => a !== null && a !== undefined && a !== ""))].sort((a, b) => a - b);
+    if (compareMode === "gender") return [...new Set(children.map(c => c.gender).filter(Boolean))].sort();
     if (compareMode === "language") return [...new Set(children.map(c => c.language).filter(Boolean))];
     return [];
   };
 
   const getGroupFilter = (g) => {
-    if (compareMode === "school") return children.filter(c => c.school && c.school.startsWith(g));
+    if (compareMode === "school") return children.filter(c => c.school === g);
     if (compareMode === "age") return children.filter(c => c.age === g);
     if (compareMode === "gender") return children.filter(c => c.gender === g);
     if (compareMode === "language") return children.filter(c => c.language === g);
@@ -163,7 +181,7 @@ export default function Overview({ children, lang }) {
   // Build comparison chart data — one object per domain with a key per group
   const comparisonData = DOMAIN_KEYS.map((key, i) => {
     const obj = { domain: domainNames[i] };
-    groups.forEach(g => { obj[String(g)] = domainAvgForGroup(getGroupFilter(g), key); });
+    groups.forEach(g => { obj[String(g)] = domainAvgForGroup(getGroupFilter(g), key) ?? 0; });
     return obj;
   });
 
@@ -171,8 +189,9 @@ export default function Overview({ children, lang }) {
   const insights = [];
 
   // Weakest domain overall
-  const weakest = [...overallDomains].sort((a, b) => a.value - b.value)[0];
-  if (weakest && weakest.value < DOMAIN_BENCHMARK) {
+  const scoredDomains = overallDomains.filter(d => d.value !== null);
+  const weakest = [...scoredDomains].sort((a, b) => a.value - b.value)[0];
+  if (!compareEmpty && weakest && weakest.value < DOMAIN_BENCHMARK) {
     insights.push({
       color: COLORS.pink,
       text: `${weakest.name} is the weakest domain at ${weakest.value}%, which is ${DOMAIN_BENCHMARK - weakest.value}% below benchmark.`
@@ -181,11 +200,11 @@ export default function Overview({ children, lang }) {
 
   // School with highest concern rate
   const schoolNames = [...new Set(children.map(c => c.school).filter(Boolean))];
-  if (schoolNames.length > 1) {
+  if (!compareEmpty && schoolNames.length > 1) {
     const schoolRates = schoolNames.map(s => {
       const group = children.filter(c => c.school === s);
       const rate = group.length > 0 ? Math.round((group.filter(c => c.status === "Developmental Concerns").length / group.length) * 100) : 0;
-      return { school: s.split(" ")[0], rate };
+      return { school: s, rate };
     });
     const worstSchool = schoolRates.sort((a, b) => b.rate - a.rate)[0];
     if (worstSchool && worstSchool.rate > 0) {
@@ -200,9 +219,9 @@ export default function Overview({ children, lang }) {
   const age5group = children.filter(c => c.age === 5);
   const age6group = children.filter(c => c.age === 6);
   if (age5group.length > 0 && age6group.length > 0) {
-    const avg5 = Math.round(age5group.reduce((a, c) => a + (c.total || 0), 0) / age5group.length);
-    const avg6 = Math.round(age6group.reduce((a, c) => a + (c.total || 0), 0) / age6group.length);
-    const diff = Math.abs(avg5 - avg6);
+    const avg5 = avgOf(age5group, "total");
+    const avg6 = avgOf(age6group, "total");
+    const diff = avg5 === null || avg6 === null ? 0 : Math.abs(avg5 - avg6);
     if (diff >= 5) {
       insights.push({
         color: COLORS.teal,
@@ -212,8 +231,8 @@ export default function Overview({ children, lang }) {
   }
 
   // Strongest domain
-  const strongest = [...overallDomains].sort((a, b) => b.value - a.value)[0];
-  if (strongest && strongest.value >= DOMAIN_BENCHMARK) {
+  const strongest = [...scoredDomains].sort((a, b) => b.value - a.value)[0];
+  if (!compareEmpty && strongest && strongest.value >= DOMAIN_BENCHMARK) {
     insights.push({
       color: COLORS.teal,
       text: `${strongest.name} is the strongest domain at ${strongest.value}%, which is ${strongest.value - DOMAIN_BENCHMARK}% above benchmark.`
@@ -221,44 +240,56 @@ export default function Overview({ children, lang }) {
   }
 
   // ── OTHER CHART DATA ──────────────────────────────────────────────────────
-  const concerns = children.filter(c => c.status === "Developmental Concerns").length;
-  const progressing = children.filter(c => c.status === "Progressing").length;
+  const concerns = children.filter(c => c.status === STATUS.CONCERNS).length;
+  const progressing = children.filter(c => c.status === STATUS.PROGRESSING).length;
+  const notScored = children.filter(c => c.status === STATUS.NOT_SCORED).length;
   const pieData = [
     { name: t.onTrack, value: onTrack },
     { name: t.progressing, value: progressing },
     { name: t.devConcerns, value: concerns },
+    ...(notScored > 0 ? [{ name: t.notScored, value: notScored }] : []),
   ];
-  const PIE_COLORS = [COLORS.teal, COLORS.orange, COLORS.pink];
+  const PIE_COLORS = [COLORS.teal, COLORS.orange, COLORS.pink, "#9CA3AF"];
 
   const langCounts = {};
-  children.forEach(c => { langCounts[c.language] = (langCounts[c.language] || 0) + 1; });
+  children.forEach(c => { const k = c.language || t.unknown; langCounts[k] = (langCounts[k] || 0) + 1; });
   const langData = Object.entries(langCounts).map(([name, value]) => ({ name, value }));
   const LANG_COLORS = [COLORS.teal, COLORS.purple, COLORS.orange];
 
-  const schoolCounts = {};
-  children.forEach(c => { schoolCounts[c.school] = (schoolCounts[c.school] || 0) + 1; });
-  const schoolData = Object.entries(schoolCounts).map(([name, value]) => ({ name: name.split(" ")[0], value }));
-
-  const age5 = children.filter(c => c.age === 5).length;
-  const age6 = children.filter(c => c.age === 6).length;
-  const girls = children.filter(c => c.gender === "Female").length;
-  const boys = children.filter(c => c.gender === "Male").length;
-
-  const monthMap = { 
-  "01": "Jan", "02": "Feb", "03": "Mar", 
-  "04": "Apr", "05": "May", "06": "Jun",
-  "07": "Jul", "08": "Aug", "09": "Sep",
-  "10": "Oct", "11": "Nov", "12": "Dec"
-};
-  const monthlyCounts = {};
+  // Age and gender distributions: every value that actually occurs, not just 5/6 and Female/Male.
+  const ageCounts = {};
   children.forEach(c => {
-    if (c.date) {
-      const m = c.date.split("-")[1];
-      const label = monthMap[m] || m;
-      monthlyCounts[label] = (monthlyCounts[label] || 0) + 1;
+    const k = c.age === null || c.age === undefined || c.age === "" ? "?" : String(c.age);
+    ageCounts[k] = (ageCounts[k] || 0) + 1;
+  });
+  const ageRows = Object.entries(ageCounts)
+    .sort(([a], [b]) => (a === "?" ? 1 : b === "?" ? -1 : Number(a) - Number(b)))
+    .map(([k, count], i) => ({ label: k === "?" ? t.unknown : `${k} ${t.years}`, count, color: GROUP_COLORS[i % GROUP_COLORS.length] }));
+
+  const genderCounts = {};
+  children.forEach(c => { const k = c.gender || "?"; genderCounts[k] = (genderCounts[k] || 0) + 1; });
+  const genderRows = Object.entries(genderCounts)
+    .sort(([a], [b]) => (a === "?" ? 1 : b === "?" ? -1 : a.localeCompare(b)))
+    .map(([k, count]) => ({
+      label: k === "Female" ? t.girls : k === "Male" ? t.boys : k === "?" ? t.unknown : k,
+      count,
+      color: k === "Female" ? COLORS.pink : k === "Male" ? COLORS.orange : COLORS.purple,
+    }));
+
+  // Monthly trend: one point per calendar month (YYYY-MM, so years never
+  // merge), counting EVERY submitted screening, oldest month first.
+  const trendSource = (sessions && sessions.length ? sessions : children);
+  const monthlyCounts = {};
+  trendSource.forEach(c => {
+    if (c.date && /^\d{4}-\d{2}/.test(c.date)) {
+      const key = c.date.slice(0, 7);
+      monthlyCounts[key] = (monthlyCounts[key] || 0) + 1;
     }
   });
-  const trendData = Object.entries(monthlyCounts).map(([month, count]) => ({ month, count }));
+  const trendData = Object.keys(monthlyCounts).sort().map(key => {
+    const [y, m] = key.split("-");
+    return { month: `${MONTHS[Number(m) - 1] || m} ${y.slice(2)}`, count: monthlyCounts[key] };
+  });
 
   const compareModes = [
     { key: "overall", label: t.overall },
@@ -275,8 +306,6 @@ export default function Overview({ children, lang }) {
       <div style={{ marginBottom: 20 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div>
-            <h2 style={{ fontSize: 22, fontWeight: 700, color: "#1a1a2e", margin: 0 }}></h2>
-            <p style={{ fontSize: 13, color: "#888", margin: "2px 0 0" }}></p>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {lastUpdated && (
@@ -383,7 +412,7 @@ export default function Overview({ children, lang }) {
                   <div className="bar-label" style={{ fontWeight: 500 }}>{d.name}</div>
                   <div className="bar-track" style={{ position: "relative" }}>
                     <div className="bar-fill" style={{
-                      width: `${d.value}%`, background: d.color,
+                      width: `${d.value ?? 0}%`, background: d.color,
                       opacity: hoveredDomain && hoveredDomain.name !== d.name ? 0.4 : 1,
                       transition: "opacity 0.2s, width 0.6s ease",
                     }}></div>
@@ -392,8 +421,8 @@ export default function Overview({ children, lang }) {
                       width: 2, height: "100%", borderLeft: "2px dashed #bbb", zIndex: 2,
                     }}></div>
                   </div>
-                  <div className="bar-pct" style={{ fontWeight: 600, color: d.value >= DOMAIN_BENCHMARK ? COLORS.teal : COLORS.pink }}>
-                    {d.value}%
+                  <div className="bar-pct" style={{ fontWeight: 600, color: d.value === null ? "#aaa" : d.value >= DOMAIN_BENCHMARK ? COLORS.teal : COLORS.pink }}>
+                    {d.value === null ? "–" : `${d.value}%`}
                   </div>
                 </div>
               ))}
@@ -514,31 +543,25 @@ export default function Overview({ children, lang }) {
         <div className="card" style={{ marginBottom: 0 }}>
           <div className="card-header"><div className="card-title">{t.byAge}</div></div>
           <div className="bar-chart">
-            <div className="bar-row">
-              <div className="bar-label">{t.fiveYr}</div>
-              <div className="bar-track"><div className="bar-fill" style={{ width: `${total > 0 ? (age5 / total) * 100 : 0}%`, background: COLORS.teal }}></div></div>
-              <div className="bar-pct">{age5}</div>
-            </div>
-            <div className="bar-row">
-              <div className="bar-label">{t.sixYr}</div>
-              <div className="bar-track"><div className="bar-fill" style={{ width: `${total > 0 ? (age6 / total) * 100 : 0}%`, background: COLORS.purple }}></div></div>
-              <div className="bar-pct">{age6}</div>
-            </div>
+            {ageRows.map(r => (
+              <div className="bar-row" key={r.label}>
+                <div className="bar-label">{r.label}</div>
+                <div className="bar-track"><div className="bar-fill" style={{ width: `${total > 0 ? (r.count / total) * 100 : 0}%`, background: r.color }}></div></div>
+                <div className="bar-pct">{r.count}</div>
+              </div>
+            ))}
           </div>
         </div>
         <div className="card" style={{ marginBottom: 0 }}>
           <div className="card-header"><div className="card-title">{t.byGender}</div></div>
           <div className="bar-chart">
-            <div className="bar-row">
-              <div className="bar-label">{t.girls}</div>
-              <div className="bar-track"><div className="bar-fill" style={{ width: `${total > 0 ? (girls / total) * 100 : 0}%`, background: COLORS.pink }}></div></div>
-              <div className="bar-pct">{girls}</div>
-            </div>
-            <div className="bar-row">
-              <div className="bar-label">{t.boys}</div>
-              <div className="bar-track"><div className="bar-fill" style={{ width: `${total > 0 ? (boys / total) * 100 : 0}%`, background: COLORS.orange }}></div></div>
-              <div className="bar-pct">{boys}</div>
-            </div>
+            {genderRows.map(r => (
+              <div className="bar-row" key={r.label}>
+                <div className="bar-label">{r.label}</div>
+                <div className="bar-track"><div className="bar-fill" style={{ width: `${total > 0 ? (r.count / total) * 100 : 0}%`, background: r.color }}></div></div>
+                <div className="bar-pct">{r.count}</div>
+              </div>
+            ))}
           </div>
         </div>
         <div className="card" style={{ marginBottom: 0, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>

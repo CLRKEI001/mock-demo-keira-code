@@ -30,18 +30,57 @@ export const ANALYTICS_SUBS = {
   xh: { overview: "Umzekelo weMpuma Koloni · Bonke abantwana", children: "Bonke abathathi-nxaxheba", results: "Iiseshoni zokugqibela", flags: "Abantwana abafuna ukulandelwa", report: "Ingxelo yabaxhasi" },
 };
 
+const STATE_TEXT = {
+  en: { loading: "Loading data…", error: "Some data could not be loaded", retry: "Try again" },
+  af: { loading: "Laai data…", error: "Sommige data kon nie gelaai word nie", retry: "Probeer weer" },
+  xh: { loading: "Iyalayisha idatha…", error: "Enye idatha ayikwazanga ukulayishwa", retry: "Zama kwakhona" },
+};
+
 // Renders ONE analytics page (page = overview | children | results | flags |
 // report). The role home's sidebar owns the navigation between them, so each
 // is its own page — this component just loads the data and shows the panel.
 export default function AnalyticsPanels({ lang = "en", page = "overview" }) {
   const tab = page;
-  // One shared, real-data source for every analytics page (see lib/analyticsData.js).
-  const { allChildren, screenedChildren, sessions } = useAnalyticsData();
+  const tx = STATE_TEXT[lang] || STATE_TEXT.en;
+  // One shared, real-data source for every analytics page (see services/analyticsData.js).
+  const { loading, error, reload, allChildren, screenedChildren, sessions } = useAnalyticsData();
+
+  // Never show "no flags / no sessions" while data is still loading or when
+  // loading failed: that reads as "all clear".
+  if (loading) {
+    return (
+      <section className="rh-analytics" id="rh-analytics">
+        <div className="rh-analytics-body">
+          <div className="card"><div className="empty-state"><div className="empty-state-title">{tx.loading}</div></div></div>
+        </div>
+      </section>
+    );
+  }
+  if (error && allChildren.length === 0 && sessions.length === 0) {
+    return (
+      <section className="rh-analytics" id="rh-analytics">
+        <div className="rh-analytics-body">
+          <div className="card">
+            <div className="empty-state">
+              <div className="empty-state-title">{tx.error}</div>
+              <div className="empty-state-sub">{error}</div>
+              <button className="btn btn-teal" style={{ marginTop: 16 }} onClick={reload}>{tx.retry}</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="rh-analytics" id="rh-analytics">
       <div className="rh-analytics-body">
-        {tab === "overview" && <Overview children={screenedChildren} lang={lang} />}
+        {error && (
+          <div style={{ marginBottom: 12, padding: "8px 14px", borderRadius: 8, background: "#FFF3F3", color: "#991040", fontSize: 12, fontWeight: 600 }}>
+            {tx.error}: {error} <button className="btn btn-ghost btn-sm" onClick={reload} style={{ marginLeft: 8 }}>{tx.retry}</button>
+          </div>
+        )}
+        {tab === "overview" && <Overview children={screenedChildren} sessions={sessions} lang={lang} />}
         {tab === "children" && <ChildrenTable children={allChildren} lang={lang} />}
         {tab === "results" && <ScreenerResults lang={lang} sessions={sessions} />}
         {tab === "flags" && <FlagsAlerts children={screenedChildren} lang={lang} />}

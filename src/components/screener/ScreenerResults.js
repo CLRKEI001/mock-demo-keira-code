@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from "react";
 import Doodle from "../shared/Doodle";
 import { supabase } from "../../services/supabaseClient";
-import { mapFollowUpRow } from "../../utils/mappers";
+import { mapFollowUpRow, indexFollowUps, findFollowUp } from "../../utils/mappers";
+import { DOMAIN_BENCHMARK, STATUS } from "../../services/analyticsData";
+
+// Score-range filter bands (same numbers as the Flags page and the shared benchmark).
+const CRITICAL = 40;
+const BENCH = DOMAIN_BENCHMARK;
  
 const T = {
   en: {
@@ -27,6 +32,14 @@ const T = {
     deleteSession: "Delete Session",
     deleteConfirm: "Are you sure you want to delete this session?",
     cancel: "Cancel",
+    notScored: "Not Scored",
+    filtersTitle: "Student Filters", searchLbl: "Search", ageLbl: "Age", allAges: "All Ages", languageLbl: "Language", allLanguages: "All Languages",
+    scoreRange: "Score Range", allScores: "All Scores",
+    scoreLow: `Below ${CRITICAL}% — Critical`, scoreMid: `${CRITICAL}–${BENCH - 1}% — Concern`, scoreHigh: `${BENCH}% and above — Good`,
+    followUpLbl: "Follow-up Status", allFollowUps: "All Follow-ups",
+    rawScore: "Raw score", screeningLbl: "Screening", awaitingReview: "Awaiting psychologist review", reviewedBy: "Reviewed by a psychologist",
+    verdictLbl: "Psychologist's verdict", verdictConcerns: "Developmental concerns", verdictFine: "No concerns", notesLbl: "Notes",
+    yearsAbbr: "yrs", years: "years", loadingTitle: "Loading sessions...",
   },
   af: {
     search: "Soek op naam of skool...",
@@ -51,6 +64,14 @@ const T = {
     deleteSession: "Verwyder Sessie",
     deleteConfirm: "Is jy seker?",
     cancel: "Kanselleer",
+    notScored: "Nie Gepunt Nie",
+    filtersTitle: "Leerlingfilters", searchLbl: "Soek", ageLbl: "Ouderdom", allAges: "Alle Ouderdomme", languageLbl: "Taal", allLanguages: "Alle Tale",
+    scoreRange: "Puntereeks", allScores: "Alle Punte",
+    scoreLow: `Onder ${CRITICAL}% — Krities`, scoreMid: `${CRITICAL}–${BENCH - 1}% — Bekommernis`, scoreHigh: `${BENCH}% en hoër — Goed`,
+    followUpLbl: "Opvolgstatus", allFollowUps: "Alle Opvolge",
+    rawScore: "Rou telling", screeningLbl: "Sifting", awaitingReview: "Wag vir hersiening deur sielkundige", reviewedBy: "Deur 'n sielkundige hersien",
+    verdictLbl: "Sielkundige se uitspraak", verdictConcerns: "Ontwikkelingsbekommernisse", verdictFine: "Geen bekommernisse",  notesLbl: "Notas",
+    yearsAbbr: "jr", years: "jaar", loadingTitle: "Laai sessies...",
   },
   xh: {
     search: "Khangela ngegama...",
@@ -75,6 +96,14 @@ const T = {
     deleteSession: "Cima iSeshoni",
     deleteConfirm: "Uqinisekile?",
     cancel: "Rhoxisa",
+    notScored: "Ayinamanqaku",
+    filtersTitle: "Izihluzi Zabafundi", searchLbl: "Khangela", ageLbl: "Iminyaka", allAges: "Yonke Iminyaka", languageLbl: "Ulwimi", allLanguages: "Zonke Iilwimi",
+    scoreRange: "Uluhlu Lwamanqaku", allScores: "Onke Amanqaku",
+    scoreLow: `Ngaphantsi kwe-${CRITICAL}% — Inkxalabo enkulu`, scoreMid: `${CRITICAL}–${BENCH - 1}% — Inkxalabo`, scoreHigh: `${BENCH}% nangaphezulu — Kulungile`,
+    followUpLbl: "Imeko Yokulandelwa", allFollowUps: "Konke Ukulandelwa",
+    rawScore: "Amanqaku aluhlaza", screeningLbl: "Uhlolo", awaitingReview: "Lilindele ukuphononongwa sisazi sengqondo", reviewedBy: "Liphononongwe sisazi sengqondo",
+    verdictLbl: "Isigqibo sesazi sengqondo", verdictConcerns: "Iingxaki zentlalo", verdictFine: "Akukho nkxalabo", notesLbl: "Amanqaku",
+    yearsAbbr: "iminyaka", years: "iminyaka", loadingTitle: "Iyalayisha iiseshoni...",
   }
 };
  
@@ -100,9 +129,9 @@ const domainColors = {
 };
  
  
-export default function ScreenerResults({ lang, sessions = [] }) {
-  const t = T[lang];
-  const [followUps, setFollowUps] = useState({});
+export default function ScreenerResults({ lang, sessions = [], loading = false }) {
+  const t = T[lang] || T.en;
+  const [followUps, setFollowUps] = useState({ byId: {}, byName: {} });
   const [search, setSearch] = useState("");
  const [stageFilter, setStageFilter] = useState("");
 const [ageFilter, setAgeFilter] = useState("");
@@ -110,7 +139,6 @@ const [languageFilter, setLanguageFilter] = useState("");
 const [scoreFilter, setScoreFilter] = useState("");
 const [followUpFilter, setFollowUpFilter] = useState("");
   const [selected, setSelected] = useState(null);
-  const loading = false;
  
   // Sessions now come in as a prop: one row per real, submitted PuzzleBox
   // screening (built in lib/analyticsData.js). This page used to read the
@@ -127,17 +155,14 @@ const [followUpFilter, setFollowUpFilter] = useState("");
         console.error("Error loading follow-ups:", error);
         return;
       }
-      const map = {};
-      data.forEach(row => {
-        map[row.child_name] = mapFollowUpRow(row);
-      });
-      if (isMounted) setFollowUps(map);
+      // Keyed by child_id (same for every viewer); child_name is only a fallback for old rows.
+      if (isMounted) setFollowUps(indexFollowUps((data || []).map(mapFollowUpRow)));
     };
 
     loadFollowUps();
 
     const channel = supabase
-      .channel("follow-ups-changes-results")
+      .channel("follow-ups-changes-results-" + Math.random().toString(36).slice(2))
       .on("postgres_changes", { event: "*", schema: "public", table: "follow_ups" }, () => {
         loadFollowUps();
       })
@@ -158,9 +183,10 @@ const [followUpFilter, setFollowUpFilter] = useState("");
   const matchLanguage = !languageFilter || s.language === languageFilter;
   const matchScore =
     !scoreFilter ? true
-    : scoreFilter === "low" ? s.score < 35
-    : scoreFilter === "mid" ? s.score >= 35 && s.score < 50
-    : scoreFilter === "high" ? s.score >= 50
+    : typeof s.score !== "number" ? false   // not scored: cannot be placed in a range
+    : scoreFilter === "low" ? s.score < CRITICAL
+    : scoreFilter === "mid" ? s.score >= CRITICAL && s.score < BENCH
+    : scoreFilter === "high" ? s.score >= BENCH
     : true;
   const matchFollowUp = !followUpFilter || s.followUpStage === followUpFilter;
   return matchSearch && matchStage && matchAge && matchLanguage && matchScore && matchFollowUp;
@@ -170,9 +196,15 @@ const [followUpFilter, setFollowUpFilter] = useState("");
     if (s === "On Track") return t.onTrack;
     if (s === "Progressing") return t.progressing;
     if (s === "Developmental Concerns") return t.devConcerns;
+    if (s === STATUS.NOT_SCORED) return t.notScored;
     return s;
   };
  
+  const ageOptions = [...new Set(sessions.map(s => s.age).filter(a => a !== null && a !== undefined && a !== ""))].sort((a, b) => a - b);
+  const languageOptions = [...new Set(sessions.map(s => s.language).filter(Boolean))].sort();
+  const selectedFollowUp = selected ? findFollowUp(followUps, { id: selected.childId, studentNumber: selected.studentNumber, name: selected.childName }) : null;
+  const fmt = v => (typeof v === "number" ? `${v}%` : "–");
+
   const domains = [
     { key: "cognitive", label: t.cognitive },
     { key: "motor", label: t.motor },
@@ -186,12 +218,11 @@ const [followUpFilter, setFollowUpFilter] = useState("");
     return (
       <div className="page-fade">
         <div className="top-filter-bar" style={{ marginBottom: 20, display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 12 }}></div>
-        <div className="filter-heading">Student Filters</div>
+        <div className="filter-heading">{t.filtersTitle}</div>
         <div className="card">
           <div className="empty-state">
             <div className="empty-state-icon" style={{ display: "flex", justifyContent: "center" }}><Doodle name="clipboard" size={56} /></div>
-            <div className="empty-state-title">Loading sessions...</div>
-            <div className="empty-state-sub">Setting up database</div>
+            <div className="empty-state-title">{t.loadingTitle}</div>
           </div>
         </div>
       </div>
@@ -201,11 +232,11 @@ const [followUpFilter, setFollowUpFilter] = useState("");
   return (
     <>
     <div className="top-filter-bar" style={{ marginBottom: 20, display: "flex", flexWrap: "wrap", alignItems: "flex-end", gap: 12 }}>
-  <div className="filter-heading">Student Filters</div>
+  <div className="filter-heading">{t.filtersTitle}</div>
 
   {/* SEARCH */}
   <div className="filter-group" style={{  minWidth: 200, flex: "2 1 200px" }}>
-    <label>Search</label>
+    <label>{t.searchLbl}</label>
     <input
       className="search-input"
       placeholder={t.search}
@@ -217,11 +248,9 @@ const [followUpFilter, setFollowUpFilter] = useState("");
 
   {/* SESSION STATUS */}
   <div className="filter-group" style={{ minWidth: 160, flex: "1 1 160px" }}>
-    <label>Session Status</label>
+    <label>{t.sessionStatus}</label>
     <select value={stageFilter} onChange={e => setStageFilter(e.target.value)}>
       <option value="">{t.filterStatus}</option>
-      <option value="stage1">{t.stage1}</option>
-      <option value="stage2">{t.stage2}</option>
       <option value="stage3">{t.stage3}</option>
       <option value="stage4">{t.stage4}</option>
     </select>
@@ -229,41 +258,38 @@ const [followUpFilter, setFollowUpFilter] = useState("");
 
   {/* AGE */}
   <div className="filter-group" style={{ minWidth: 160, flex: "1 1 160px" }}>
-    <label>Age</label>
+    <label>{t.ageLbl}</label>
     <select value={ageFilter} onChange={e => setAgeFilter(e.target.value)}>
-      <option value="">All Ages</option>
-      <option value="5">5 years</option>
-      <option value="6">6 years</option>
+      <option value="">{t.allAges}</option>
+      {ageOptions.map(a => <option key={a} value={String(a)}>{a} {t.years}</option>)}
     </select>
   </div>
 
   {/* LANGUAGE */}
   <div className="filter-group" style={{ minWidth: 160, flex: "1 1 160px" }}>
-    <label>Language</label>
+    <label>{t.languageLbl}</label>
     <select value={languageFilter} onChange={e => setLanguageFilter(e.target.value)}>
-      <option value="">All Languages</option>
-      <option value="isiXhosa">isiXhosa</option>
-      <option value="English">English</option>
-      <option value="Afrikaans">Afrikaans</option>
+      <option value="">{t.allLanguages}</option>
+      {languageOptions.map(l => <option key={l} value={l}>{l}</option>)}
     </select>
   </div>
 
   {/* SCORE */}
   <div className="filter-group" style={{ minWidth: 160, flex: "1 1 160px" }}>
-    <label>Score Range</label>
+    <label>{t.scoreRange}</label>
     <select value={scoreFilter} onChange={e => setScoreFilter(e.target.value)}>
-      <option value="">All Scores</option>
-      <option value="low">Below 40 — Critical</option>
-      <option value="mid">40–60 — Concern</option>
-      <option value="high">Above 60 — Good</option>
+      <option value="">{t.allScores}</option>
+      <option value="low">{t.scoreLow}</option>
+      <option value="mid">{t.scoreMid}</option>
+      <option value="high">{t.scoreHigh}</option>
     </select>
   </div>
 
   {/* FOLLOW UP */}
   <div className="filter-group" style={{ minWidth: 160, flex: "1 1 160px" }}>
-    <label>Follow-up Status</label>
+    <label>{t.followUpLbl}</label>
     <select value={followUpFilter} onChange={e => setFollowUpFilter(e.target.value)}>
-      <option value="">All Follow-ups</option>
+      <option value="">{t.allFollowUps}</option>
       <option value="fu1">{t.fu1}</option>
       <option value="fu2">{t.fu2}</option>
       <option value="fu3">{t.fu3}</option>
@@ -315,9 +341,9 @@ const fc = followUpColors[followUpKey] || followUpColors.fu1;
                     <tr key={s.id || i}>
                       <td style={{ fontWeight: 700 }}>{s.childName}</td>
                       <td>{s.school}</td>
-                      <td>{s.age} yrs</td>
+                      <td>{s.age} {t.yearsAbbr}</td>
                       <td>{s.language}</td>
-                      <td><strong>{s.score}%</strong></td>
+                      <td><strong>{fmt(s.score)}</strong></td>
                       <td style={{ color: "var(--ink-faint)", fontSize: 12 }}>{s.date}</td>
                       <td>
                         <span style={{ display: "inline-block", padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: sc.bg, color: sc.color }}>
@@ -354,7 +380,7 @@ const fc = followUpColors[followUpKey] || followUpColors.fu1;
             <div className="report-section">
               <div className="report-section-title">{t.sessionDetail}</div>
               <div className="report-row"><span className="report-row-label">{t.school}</span><span className="report-row-value">{selected.school}</span></div>
-              <div className="report-row"><span className="report-row-label">{t.age}</span><span className="report-row-value">{selected.age} years</span></div>
+              <div className="report-row"><span className="report-row-label">{t.age}</span><span className="report-row-value">{selected.age} {t.years}</span></div>
               <div className="report-row"><span className="report-row-label">{t.language}</span><span className="report-row-value">{selected.language}</span></div>
               <div className="report-row"><span className="report-row-label">{t.examiner}</span><span className="report-row-value">{selected.examiner}</span></div>
               <div className="report-row"><span className="report-row-label">{t.date}</span><span className="report-row-value">{selected.date}</span></div>
@@ -367,27 +393,27 @@ const fc = followUpColors[followUpKey] || followUpColors.fu1;
             {/* FOLLOW-UP INFO FROM STUDENT RECORDS */}
             <div className="report-section">
               <div className="report-section-title"> {t.followUpInfo}</div>
-              {followUps[selected.childName] ? (
+              {selectedFollowUp ? (
                 <div style={{ padding: 14, background: "var(--teal-lt)", borderRadius: 12, border: "1px solid rgba(0,155,141,0.2)" }}>
                   <div style={{ fontSize: 12, color: "var(--ink-mid)", lineHeight: 2 }}>
                     <div className="report-row">
                       <span className="report-row-label">{t.followUpStatus}</span>
-                      <span style={{ fontWeight: 700, color: followUpColors[followUps[selected.childName].followUpType]?.color }}>
-                        {t[followUps[selected.childName].followUpType]}
+                      <span style={{ fontWeight: 700, color: followUpColors[selectedFollowUp.followUpType]?.color }}>
+                        {t[selectedFollowUp.followUpType]}
                       </span>
                     </div>
                     <div className="report-row">
                       <span className="report-row-label">{t.followUpDate}</span>
-                      <span className="report-row-value">{followUps[selected.childName].followUpDate}</span>
+                      <span className="report-row-value">{selectedFollowUp.followUpDate}</span>
                     </div>
                     <div className="report-row">
                       <span className="report-row-label">{t.followUpPsych}</span>
-                      <span className="report-row-value">{followUps[selected.childName].followUpPsych}</span>
+                      <span className="report-row-value">{selectedFollowUp.followUpPsych}</span>
                     </div>
-                    {followUps[selected.childName].followUpReason && (
+                    {selectedFollowUp.followUpReason && (
                       <div className="report-row">
                         <span className="report-row-label">{t.followUpReason}</span>
-                        <span className="report-row-value">{followUps[selected.childName].followUpReason}</span>
+                        <span className="report-row-value">{selectedFollowUp.followUpReason}</span>
                       </div>
                     )}
                   </div>
@@ -406,7 +432,7 @@ const fc = followUpColors[followUpKey] || followUpColors.fu1;
                 <div className="domain-bar" key={d.key}>
                   <div className="domain-bar-header">
                     <span>{d.label}</span>
-                    <span>{selected[d.key] || 0}%</span>
+                    <span>{fmt(selected[d.key])}</span>
                   </div>
                   <div className="domain-bar-track">
                     <div className="domain-bar-fill" style={{ width: `${selected[d.key] || 0}%`, background: domainColors[d.key] }}></div>
@@ -418,23 +444,23 @@ const fc = followUpColors[followUpKey] || followUpColors.fu1;
             {/* RESULT */}
             <div style={{
               display: "flex", alignItems: "center", justifyContent: "space-between", padding: 16,
-              background: selected.status === "Developmental Concerns" ? "var(--pink-lt)" : selected.status === "On Track" ? "var(--teal-lt)" : "var(--orange-lt)",
+              background: selected.status === "Developmental Concerns" ? "var(--pink-lt)" : selected.status === "On Track" ? "var(--teal-lt)" : selected.status === STATUS.NOT_SCORED ? "#F1F1F1" : "var(--orange-lt)",
               borderRadius: 12, marginBottom: 12
             }}>
-              <span style={{ fontWeight: 800, fontSize: 14, color: selected.status === "Developmental Concerns" ? "var(--pink)" : selected.status === "On Track" ? "var(--teal)" : "var(--orange)" }}>
+              <span style={{ fontWeight: 800, fontSize: 14, color: selected.status === "Developmental Concerns" ? "var(--pink)" : selected.status === "On Track" ? "var(--teal)" : selected.status === STATUS.NOT_SCORED ? "#777" : "var(--orange)" }}>
                 {statusLabel(selected.status)}
               </span>
-              <span style={{ fontFamily: "var(--font-heading)", fontSize: 28, fontWeight: 900 }}>{selected.score}%</span>
+              <span style={{ fontFamily: "var(--font-heading)", fontSize: 28, fontWeight: 900 }}>{fmt(selected.score)}</span>
             </div>
  
             {/* RAW SCORE + REVIEW OUTCOME (real PuzzleBox screening) */}
             <div style={{ padding: 14, background: "var(--surface)", borderRadius: 12, fontSize: 13, color: "var(--ink-mid)", lineHeight: 1.6 }}>
-              <div><strong>Raw score:</strong> {selected.rawScore}{selected.maxScore ? ` / ${selected.maxScore}` : ""}</div>
-              <div><strong>Screening:</strong> {selected.screeningStatus === "reviewed" ? "Reviewed by a psychologist" : "Awaiting psychologist review"}</div>
+              <div><strong>{t.rawScore}:</strong> {selected.rawScore}{selected.maxScore ? ` / ${selected.maxScore}` : ""}</div>
+              <div><strong>{t.screeningLbl}:</strong> {selected.screeningStatus === "reviewed" ? t.reviewedBy : t.awaitingReview}</div>
               {selected.reviewVerdict && (
-                <div><strong>Psychologist's verdict:</strong> {selected.reviewVerdict === "concerns" ? "Developmental concerns" : "No concerns"}</div>
+                <div><strong>{t.verdictLbl}:</strong> {selected.reviewVerdict === "concerns" ? t.verdictConcerns : t.verdictFine}</div>
               )}
-              {selected.reviewNotes && <div><strong>Notes:</strong> {selected.reviewNotes}</div>}
+              {selected.reviewNotes && <div><strong>{t.notesLbl}:</strong> {selected.reviewNotes}</div>}
             </div>
           </div>
         </div>

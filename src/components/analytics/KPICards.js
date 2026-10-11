@@ -105,46 +105,6 @@ function GaugeMeter({ value, color, size = 90 }) {
   );
 }
 
-// A sparkline is a tiny minimalist line chart with no axes or labels.
-// It takes an array of numbers and draws a connected line through them.
-// The maths normalises each value to fit within the SVG height:
-// y = height - ((v - min) / range) * (height - 8) - 4
-// This maps the smallest value to the bottom and largest to the top.
-// pts builds an array of "x,y" coordinate strings then .join(" ") turns
-// them into the space-separated format that SVG polyline expects.
-// A small dot is drawn on the last point to show the most recent value.
-function Sparkline({ data, color, width = 55, height = 100 }) {
-  if (!data || data.length < 2) return null;
-  const max = Math.max(...data);
-  const min = Math.min(...data);
-  const range = max - min || 1;
-  const pts = data.map((v, i) => {
-    const x = (i / (data.length - 1)) * width;
-    const y = height - ((v - min) / range) * (height - 8) - 4;
-    return `${x},${y}`;
-  });
-  return (
-    <svg width={width} height={height}>
-      <polyline
-        points={pts.join(" ")}
-        fill="none"
-        stroke={color}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        opacity={0.85}
-      />
-      {/* Dot on last point */}
-      <circle
-        cx={parseFloat(pts[pts.length - 1].split(",")[0])}
-        cy={parseFloat(pts[pts.length - 1].split(",")[1])}
-        r={3}
-        fill={color}
-      />
-    </svg>
-  );
-}
-
 const COLORS = {
   teal: "#009B8D",
   pink: "#E8175D",
@@ -159,30 +119,26 @@ const COLORS = {
 //   flagged    - number - number of flagged children
 //   onTrack    - number - number on track
 //   avgScore   - number - average score as a percentage (0-100)
-//   trendData  - array  - monthly trend data e.g. [{ month: "Feb", count: 11 }, ...]
 //   t          - object - translation strings from your T object
 
-export default function KpiCards({ total, flagged, onTrack, avgScore, trendData, t }) {
+// trendData is accepted (Overview passes it) but no longer drawn.
+export default function KpiCards({ total, flagged, onTrack, avgScore, t }) {
   const animatedTotal = useCountUp(total);
   const animatedFlagged = useCountUp(flagged);
   const animatedOnTrack = useCountUp(onTrack);
   const animatedAvg = useCountUp(avgScore);
-
-  // Extract just the count values for the sparkline
-  const sparkValues = trendData ? trendData.map(d => d.count) : [];
 
   return (
     <div className="stats-grid">
 
       {/* CARD 1 — Total Screened with sparkline */}
       <div className="stat-card c1" style={cardStyle}>
-        <div style={{ vdisplay: "flex", flexDirection: "column", alignItems: "center", textAlign: "center"}}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center"}}>
           <div>
             <div className="stat-label" style={labelStyle}>{t.totalScreened}</div>
             <div className="stat-value" style={{ ...valueStyle, color: COLORS.teal, fontSize: "clamp(28px, 8vw, 52px)" }}>
               {animatedTotal}
             </div>
-            <div className="stat-change" style={changeStyle}>↑ {t.thisWeek}</div>
           </div>
           
         </div>
@@ -222,7 +178,7 @@ export default function KpiCards({ total, flagged, onTrack, avgScore, trendData,
               {animatedOnTrack}
             </div>
             <div className="stat-change" style={{ ...changeStyle, color: COLORS.teal }}>
-              ↑ {t.aboveAverage}
+              {onTrack} / {total}
             </div>
           </div>
           <div style={{ position: "relative", width: 90, height: 90 }}>
@@ -248,7 +204,6 @@ export default function KpiCards({ total, flagged, onTrack, avgScore, trendData,
           <div style={{ marginTop: -8, fontSize: 26, fontWeight: 700, color: COLORS.orange }}>
             {animatedAvg}<span style={{ fontSize: 14 }}>%</span>
           </div>
-          <div style={{ fontSize: 11, color: "#aaa", marginTop: 4 }}>Eastern Cape pilot</div>
         </div>
       </div>
 
