@@ -542,46 +542,6 @@ function ResearchSection() {
   );
 }
 
-// ---- Partners: a simple row, logos drop into the circles -----------------
-// Only real partners / funders belong here. SACE and HPCSA are regulators, not
-// partners — they're mentioned below as the registrations users sign up with.
-const PARTNERS = [
-  { name: "UCT", role: "Academic development partner" },
-];
-
-function PartnersSection() {
-  const isMobile = useIsMobile(640);
-  return (
-    <section style={{ padding: isMobile ? "64px 22px" : "100px 40px", background: COLORS.white }}>
-      <div style={{ maxWidth: 1000, margin: "auto" }}>
-        <Reveal>
-          <SectionHeading align="center" eyebrow="Working together" title="Our partners & funders" />
-        </Reveal>
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : `repeat(${PARTNERS.length}, minmax(0, 280px))`, justifyContent: "center", gap: isMobile ? 30 : 40 }}>
-          {PARTNERS.map((p, i) => (
-            <Reveal key={p.name} delay={i * 0.1} style={{ textAlign: "center" }}>
-              {/* Partner logo placeholder: swap for an <img> when logos are available */}
-              <div style={{
-                width: 120, height: 120, borderRadius: "50%", background: CREAM,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                margin: "0 auto 16px", fontFamily: FONTS.heading, fontWeight: 900,
-                fontSize: 22, color: COLORS.inkMid,
-              }}>
-                {p.name}
-              </div>
-              <h3 style={{ fontFamily: FONTS.heading, fontSize: 17, fontWeight: 800, color: COLORS.ink, marginBottom: 4 }}>{p.name}</h3>
-              <p style={{ fontSize: 14, color: COLORS.inkMid, lineHeight: 1.55 }}>{p.role}</p>
-            </Reveal>
-          ))}
-        </div>
-        <p style={{ textAlign: "center", fontSize: 13.5, color: COLORS.inkMid, marginTop: 36, lineHeight: 1.7, maxWidth: 560, marginLeft: "auto", marginRight: "auto" }}>
-          Educators register with SACE and psychologists with HPCSA when they join. These are professional registration bodies, not partners or funders.
-        </p>
-      </div>
-    </section>
-  );
-}
-
 export default function About({ onNavigateToLogin, onNavigate }) {
   const go = onNavigate || (() => console.warn("No onNavigate handler passed to About"));
 
@@ -601,7 +561,6 @@ export default function About({ onNavigateToLogin, onNavigate }) {
       <FoundingStory />
       <TeamSection />
       <ResearchSection />
-      <PartnersSection />
       <CallToAction />
       <Footer site="tpp" onNavigate={go} onLoginClick={() => onNavigateToLogin()} />
     </div>
