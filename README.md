@@ -1,74 +1,159 @@
 # Puzzel-Project-Team-19
 
-A web-based platform for Picture Tree that digitises early childhood developmental screening for teachers, psychologists, and admins.
+**The Puzzle Project · The Puzzle Box Screener** — a web platform for [Picture Tree](https://picturetree.co.za) that digitises early childhood developmental screening. Teachers screen children with a puzzle-based tool, psychologists review the results, and admins oversee the whole programme.
 
-## Getting Started with Create React App
+> **Team 19:** Jess, Keira, Kgoshi and Mihle — built for Picture Tree NGO.
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+---
 
-## Available Scripts
+## Welcome
 
-In the project directory, you can run:
+This repo holds two things in one app:
 
-### `npm start`
+1. **The public website** — the Puzzle Project home, About, Donate, **The Puzzle Box** (the screener) and **Puzzle Play** pages.
+2. **The signed-in platform** — role-based dashboards, the screener itself, training for educators and psychologists, analytics and reports, and an offline mode for schools with poor signal.
 
-Runs the app in the development mode.
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+### Who uses it
 
-The page will reload when you make changes.
-You may also see any lint errors in the console.
+| Role | What they do |
+|---|---|
+| **Educator (teacher)** | Completes the Puzzle Box training, adds children (with a consent form), runs screenings, reads feedback from psychologists. |
+| **Psychologist** | Reviews submitted screenings, records a verdict, sends feedback to the teacher, manages follow-ups, sees full analytics. |
+| **Admin** | Approves new accounts, assigns roles, reviews consent forms and purchase requests, manages training and screener content, sees programme-wide analytics. |
+| **Data analyst** | Reads aggregated analytics. |
 
-### `npm test`
+New accounts are **not** active until an admin approves them.
 
-Launches the test runner in the interactive watch mode.
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+### What's inside
 
-### `npm run build`
+- **The Puzzle Box Screener** — 6 developmental domains (cognitive, fine motor, language, social, emotional, moral), age-specific scoring for ages 5–6, built-in timers, observation notes, and interpretation bands (On Track / Progressing / Developmental Concerns).
+- **Consent forms** — upload, automatic check, and manual admin review before a child can be screened.
+- **Training course** — modules and quizzes with a 70% pass mark and a certificate.
+- **Analytics & reports** — Overview, Student Records, Screener Results, Flags & Alerts and a Summary Report, with PDF and Excel export.
+- **Offline screener** — encrypted offline package, licence-controlled, syncs when back online.
+- **Translator chat** — a helper for translating messages (English, Afrikaans, isiXhosa).
+- **Notifications** — in-app messages, email, and web push.
+- **Demo mode** — a shortened 4-section screener for presentations (see below).
 
-Builds the app for production to the `build` folder.
-It correctly bundles React in production mode and optimizes the build for the best performance.
+---
 
-The build is minified and the filenames include the hashes.
-Your app is ready to be deployed!
+## Tech stack
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+- **Front end:** React (Create React App), Recharts, jsPDF + autotable, SheetJS (`xlsx`)
+- **Back end:** [Supabase](https://supabase.com) — Postgres with row-level security, Realtime, Storage and Edge Functions
+- **Sign-in:** Firebase Authentication (its token is passed to Supabase)
+- **Offline / PWA:** Workbox service worker (`src/service-worker.js`) plus an encrypted vault (`src/offline/`)
+- **Hosting:** Vercel or Firebase Hosting (`vercel.json`, `firebase.json`)
 
-### `npm run eject`
+## Project layout
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+```
+src/
+  App.js                    routing between public site, login and role dashboards
+  components/
+    public/                 home, About, Donate, Puzzle Box and Puzzle Play pages
+    dashboards/             TeacherHome, PsychologistHome, AdminHome, Dashboard, MemberArea
+    screener/               PuzzleBoxScreener + admin content editor + results
+    analytics/              Overview, Flags, Student Records, Summary Report
+    training/               training modules, quizzes and admin editors
+    translator/             translator chat widget
+    shared/                 site chrome (nav/footer), sidebars, shared UI
+  services/                 analyticsData (the one source of analytics numbers),
+                            reportGenerator, consentForms, push, supabase/firebase clients
+  hooks/                    screener content and training hooks
+  data/                     built-in screener and training content
+  offline/                  offline vault and sync
+  utils/                    row mappers, showcase (demo) mode
+supabase/
+  database/                 SQL for tables, student numbers, access rules (see its README)
+  migrations/               numbered migrations
+  functions/
+    email-notification/     emails each new message
+    send-push/              web-push notifications
+    issue-offline-package/  builds the encrypted offline package
+    translator-chat/        translation helper (Gemini)
+```
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+---
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+## Getting started
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+### 1. Install
 
-## Learn More
+```bash
+npm install
+```
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+### 2. Environment variables
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+Create a `.env.local` in the project root (never commit it):
 
-### Code Splitting
+```bash
+REACT_APP_SUPABASE_URL=https://<your-project>.supabase.co
+REACT_APP_SUPABASE_ANON_KEY=<your anon/public key>
+REACT_APP_VAPID_PUBLIC_KEY=<public VAPID key>     # only for web push
+REACT_APP_SHOWCASE_MODE=true                      # see "Demo mode" below
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+### 3. Run
 
-### Analyzing the Bundle Size
+```bash
+npm start        # http://localhost:3000
+npm test         # test runner
+npm run build    # production build in /build
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+---
 
-### Making a Progressive Web App
+## Demo mode
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+`REACT_APP_SHOWCASE_MODE` controls the screener:
 
-### Advanced Configuration
+- **not `false`** (the default) — a shortened **4-section, 8-question** screener with rescaled pass marks. Good for presentations.
+- **`false`** — the **full 40-question screener**. **Set this before any real use.** Results saved in demo mode are ordinary screenings.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+## Supabase setup
 
-### Deployment
+1. Create the tables and rules in order from `supabase/database/` (read its README first) and apply `supabase/migrations/`.
+2. Deploy the Edge Functions:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+   ```bash
+   supabase functions deploy email-notification --no-verify-jwt
+   supabase functions deploy send-push
+   supabase functions deploy issue-offline-package
+   supabase functions deploy translator-chat
+   ```
 
-### `npm run build` fails to minify
+3. Set the function secrets:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+   ```bash
+   supabase secrets set BREVO_API_KEY=... EMAIL_FROM=... WEBHOOK_SECRET=...   # email
+   supabase secrets set VAPID_PUBLIC_KEY=... VAPID_PRIVATE_KEY=... VAPID_SUBJECT=mailto:you@example.com   # push
+   ```
+
+   Generate a VAPID pair once with `npx web-push generate-vapid-keys`. See the header comment of each function for the full list of secrets it needs.
+
+4. Turn on Realtime for the tables the dashboards listen to (`children`, `puzzlebox_screenings`, `follow_ups`, `messages`).
+
+> ⚠️ `supabase/database/emergency_reopen.sql` opens every table to anyone with the public key. It is for emergencies only — never run it on a live project.
+
+## How the numbers work
+
+All analytics pages read from **one place**: `src/services/analyticsData.js`. It loads children, submitted screenings and follow-ups, then works out each child's score from their latest screening.
+
+- A score is **points earned ÷ the maximum possible**: yes/no questions are worth 1, the rest 2 (44 in total).
+- **Status** comes from the age-specific interpretation band (or the psychologist's verdict once reviewed) — not from the percentage.
+- A screening with no band and no verdict shows as **Not Scored**.
+- "Needs follow-up" means the latest result is Developmental Concerns and it hasn't been marked resolved (`isActiveFlag`).
+
+## Contributing
+
+- Work on a branch (`git checkout -b my-change`), push it, and open a pull request.
+- Don't commit `.env*` files or secrets.
+- Run `npm run build` before pushing, to catch compile errors.
+
+---
+
+# Create React App
+
+This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app). See the [CRA documentation](https://facebook.github.io/create-react-app/docs/getting-started) for `eject`, code splitting, bundle analysis, PWA setup, deployment and troubleshooting.
