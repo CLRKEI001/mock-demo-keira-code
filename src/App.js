@@ -71,6 +71,25 @@ async function resolveEducatorMemberView(uid) {
   }
 }
 
+// Last successfully loaded profile, kept so a cold start with no signal (or a
+// failed request) doesn't wrongly show "Account not found" for a real,
+// approved user. Cleared on sign-out. Only the fields routing needs.
+const PROFILE_CACHE_KEY = "pb_profile_cache_v1";
+function readCachedProfile(uid) {
+  try {
+    const c = JSON.parse(localStorage.getItem(PROFILE_CACHE_KEY) || "null");
+    return c && c.id === uid ? c : null;
+  } catch { return null; }
+}
+function writeCachedProfile(p) {
+  try {
+    if (!p) return localStorage.removeItem(PROFILE_CACHE_KEY);
+    localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({
+      id: p.id, role: p.role, isVerified: !!p.isVerified, name: p.name, email: p.email,
+    }));
+  } catch { /* storage unavailable — fine */ }
+}
+
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -105,6 +124,24 @@ function App() {
   // screen for a moment before we swap it for training/dashboard.
   const [memberViewReady, setMemberViewReady] = useState(true);
 
+  // ONE place that decides where a freshly verified/approved person lands.
+  // Used by both Login (onVerified) and PendingApproval (onApproved).
+  //  - teachers: straight to Training or the dashboard (never the choice screen)
+  //  - psychologists: always the dashboard
+  //  - everyone else (admin…): landing
+  const routeVerifiedProfile = async (p, uid) => {
+    if (p?.isVerified && p.role === "educator") {
+      setMemberViewReady(false);
+      const resolved = await resolveEducatorMemberView(p.id || uid);
+      setMemberView(resolved);
+      setMemberViewReady(true);
+    } else if (p?.isVerified && p.role === "psychologist") {
+      setMemberView("dashboard");
+    } else {
+      setMemberView("landing");
+    }
+  };
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u);
@@ -122,6 +159,9 @@ function App() {
           // below is what actually gates access: PendingApproval renders
           // instead of a dashboard unless profile.isVerified is true.
           const mapped = data ? mapUserRow(data) : null;
+          // Only a SUCCESSFUL query may say "no profile" (null). Remember
+          // the good result for offline starts.
+          writeCachedProfile(mapped);
           setProfile(mapped);
 
           // Teachers only: replace the "landing" choice screen with a direct
@@ -149,9 +189,17 @@ function App() {
             setMemberView("dashboard");
           }
         } catch {
-          setProfile(null);
+          // The request FAILED (offline, timeout…) — that's not the same as
+          // "this account doesn't exist". Fall back to the last good profile
+          // for this user; only if there is none do we show no-profile.
+          const cached = readCachedProfile(u.uid);
+          setProfile(cached || null);
+          if (cached?.isVerified && cached.role === "psychologist" && readMemberView() !== "dashboard") {
+            setMemberView("dashboard");
+          }
         }
       } else {
+        writeCachedProfile(null);
         setProfile(null);
         setTransitioning(false);
         setShowLogin(false);
@@ -246,8 +294,13 @@ function App() {
           <PendingApproval
             user={user}
             profile={profile}
-            onApproved={(approvedProfile) => {
+            onApproved={async (approvedProfile) => {
               setProfile(approvedProfile);
+              writeCachedProfile(approvedProfile);
+              // Same routing as a normal login, so a newly approved teacher
+              // lands in Training/dashboard and a psychologist on their
+              // dashboard — not the "Training / Buy" choice screen.
+              await routeVerifiedProfile(approvedProfile, user?.uid);
               setTransitioning(true);
             }}
           />
@@ -274,25 +327,12 @@ function App() {
       <Login
         tier={loginCtx?.tier || null}
         initialMode={loginCtx?.mode || "login"}
-        onBack={() => { setShowLogin(false); setPublicPage("home"); }}
+        // Back returns to the page the visitor opened Login from (Puzzle Box, Puzzle Play…), not always Home.
+        onBack={() => setShowLogin(false)}
         onVerified={async (verifiedProfile) => {
           setProfile(verifiedProfile);
-          // Teachers: resolve straight to Training or the dashboard, never
-          // the "landing" choice screen (see resolveEducatorMemberView).
-          // Psychologists: same deal, just always straight to "dashboard" —
-          // mirrors the equivalent check in the onAuthStateChanged effect
-          // above, which only runs on a page load/refresh, not on this
-          // direct post-login handoff from Login.js.
-          if (verifiedProfile?.isVerified && verifiedProfile.role === "educator") {
-            setMemberViewReady(false);
-            const resolved = await resolveEducatorMemberView(verifiedProfile.id || auth.currentUser?.uid);
-            setMemberView(resolved);
-            setMemberViewReady(true);
-          } else if (verifiedProfile?.isVerified && verifiedProfile.role === "psychologist") {
-            setMemberView("dashboard");
-          } else {
-            setMemberView("landing");
-          }
+          writeCachedProfile(verifiedProfile);
+          await routeVerifiedProfile(verifiedProfile, auth.currentUser?.uid);
           // Only play the "welcome in" transition for an already-approved
           // account — a fresh signup lands on PendingApproval instead,
           // where a celebratory animation would be misleading.
@@ -302,12 +342,11 @@ function App() {
     );
   }
 
-  const isPlay = publicPage.startsWith("pp-");
   const publicPageProps = {
     onNavigate: setPublicPage,
     // Puzzle Play has its own (not yet built) login page; everything else
     // uses The Puzzle Box login.
-    onNavigateToLogin: isPlay ? () => setPublicPage("pp-login") : openLogin,
+    onNavigateToLogin: openLogin, // Puzzle Play has no login of its own: everyone uses the one sign-in
     onAccess: (tier, mode) => openLogin({ tier, mode }),
   };
 

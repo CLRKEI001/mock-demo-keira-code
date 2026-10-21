@@ -58,7 +58,10 @@ export const DOMAINS = [
 // Helper: look up a score from one of the age tables below.
 // `value` is a raw count or a time-in-seconds figure.
 export function scoreFromAgeTable(table, age, value) {
-  const rows = table[age] || table[6]; // default to the 6-year-old rows if age is unusual
+  // Only ages with a table are scored. (It used to fall back to the age-6 rows
+  // for any other age, giving a score against the wrong norms.)
+  const rows = table[age];
+  if (!rows) return null;
   for (const row of rows) {
     if (row.test(value)) return row.score;
   }
@@ -68,12 +71,12 @@ export function scoreFromAgeTable(table, age, value) {
 const puzzleTimeTable = {
   5: [
     { score: 2, test: (s) => s < 6 * 60 },
-    { score: 1, test: (s) => s >= 7 * 60 - 60 && s <= 13 * 60 }, // 7-13 min
+    { score: 1, test: (s) => s <= 13 * 60 }, // 6-13 min
     { score: 0, test: () => true }, // >14 min
   ],
   6: [
     { score: 2, test: (s) => s < 5 * 60 },
-    { score: 1, test: (s) => s >= 6 * 60 && s <= 12 * 60 },
+    { score: 1, test: (s) => s <= 13 * 60 }, // 5-13 min (no gap after the 2-point band)
     { score: 0, test: () => true }, // >13 min
   ],
 };
@@ -106,13 +109,13 @@ const orangeThingsChecklistTable = {
 const stickTimeTable = {
   5: [
     { score: 2, test: (s) => s < 13 },
-    { score: 1, test: (s) => s >= 14 && s <= 36 },
-    { score: 0, test: (s) => s > 37 },
+    { score: 1, test: (s) => s <= 36 },
+    { score: 0, test: () => true },
   ],
   6: [
     { score: 2, test: (s) => s < 9 },
-    { score: 1, test: (s) => s >= 10 && s <= 32 },
-    { score: 0, test: (s) => s > 33 },
+    { score: 1, test: (s) => s <= 32 },
+    { score: 0, test: () => true },
   ],
 };
 

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import Doodle from "../shared/Doodle";
 
 const TOWN_COORDS = {
@@ -36,14 +36,6 @@ function getPinColor(count, max) {
   return COLORS.pink;
 }
 
-const defaultPins = [
-  { name: "Adelaide",    count: 7, ...TOWN_COORDS.Adelaide },
-  { name: "Komani",      count: 6, ...TOWN_COORDS.Komani },
-  { name: "Stutterheim", count: 5, ...TOWN_COORDS.Stutterheim },
-  { name: "Fort",        count: 5, ...TOWN_COORDS.Fort },
-  { name: "edcsc",       count: 3, ...TOWN_COORDS.edcsc },
-];
-
 function BarRow({ name, count, max }) {
   return (
     <div className="bar-row">
@@ -60,6 +52,12 @@ export default function SchoolsMap({ screenings = [], t = {} }) {
   const [expanded, setExpanded] = useState(false);
   const [hoveredPin, setHoveredPin] = useState(null);
   const [selectedPin, setSelectedPin] = useState(null);
+  const [narrow, setNarrow] = useState(typeof window !== "undefined" && window.innerWidth < 500);
+  useEffect(() => {
+    const onResize = () => setNarrow(window.innerWidth < 500);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   const townData = useMemo(() => {
     const counts = {};
@@ -70,6 +68,8 @@ export default function SchoolsMap({ screenings = [], t = {} }) {
     return counts;
   }, [screenings]);
 
+  // Pins are placed on the outline only for towns we have coordinates for;
+  // any other school gets a spread-out position and is listed by name only.
   const pins = useMemo(() => {
     return Object.entries(townData).map(([name, count], i) => {
       const coords = TOWN_COORDS[name] || {
@@ -80,9 +80,19 @@ export default function SchoolsMap({ screenings = [], t = {} }) {
     });
   }, [townData]);
 
-  const activePins = pins.length > 0 ? pins : defaultPins;
+  // Sorted copy (never sort the memoised array in place). No made-up
+  // fallback pins: with no data we show an empty state instead.
+  const activePins = useMemo(() => [...pins].sort((a, b) => b.count - a.count), [pins]);
   const maxCount = Math.max(...activePins.map(p => p.count), 1);
   const totalScreened = activePins.reduce((a, p) => a + p.count, 0);
+
+  if (activePins.length === 0) {
+    return (
+      <div style={{ padding: "24px 8px", textAlign: "center", fontSize: 13, color: "#8888a8" }}>
+        {t.noData || "No screenings yet"}
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -90,7 +100,6 @@ export default function SchoolsMap({ screenings = [], t = {} }) {
       {/* ALWAYS VISIBLE: bar chart */}
       <div className="bar-chart" style={{ marginBottom: 12 }}>
         {activePins
-          .sort((a, b) => b.count - a.count)
           .map(p => <BarRow key={p.name} name={p.name} count={p.count} max={maxCount} />)
         }
       </div>
@@ -116,7 +125,7 @@ export default function SchoolsMap({ screenings = [], t = {} }) {
       {/* EXPANDED MAP */}
       {expanded && (
         <div style={{
-          display: "grid", gridTemplateColumns: window.innerWidth < 500 ? "1fr" : "1fr 220px",
+          display: "grid", gridTemplateColumns: narrow ? "1fr" : "1fr 220px",
           marginTop: 16, animation: "fadeIn 0.3s ease",
         }}>
 
@@ -239,7 +248,6 @@ export default function SchoolsMap({ screenings = [], t = {} }) {
               /* School list */
               <div style={{ display: "flex", flexDirection: "column", gap: 6, overflowY: "auto", maxHeight: 260 }}>
                 {activePins
-                  .sort((a, b) => b.count - a.count)
                   .map(pin => (
                     <div key={pin.name}
                       onClick={() => setSelectedPin(pin)}

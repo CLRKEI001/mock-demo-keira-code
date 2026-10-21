@@ -65,3 +65,38 @@ self.addEventListener("message", (event) => {
     self.skipWaiting();
   }
 });
+
+// 6. Web Push — receives a message from the send-push Edge Function and shows
+//    it as an OS-level notification even when the app is closed.
+//    (This used to live in public/service-worker.js, but the CRA build
+//    overwrites that file with this one — so the handlers must live here.)
+self.addEventListener("push", (event) => {
+  let data = { title: "PuzzleBox Screener", body: "You have a new notification." };
+  try {
+    if (event.data) data = { ...data, ...event.data.json() };
+  } catch {
+    // Payload wasn't JSON — fall back to the default text above.
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: "/logo192.png",
+      badge: "/logo192.png",
+      data: { url: data.url || "/" },
+    })
+  );
+});
+
+// Clicking focuses an already-open tab if there is one, otherwise opens the URL.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const targetUrl = event.notification.data?.url || "/";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+      for (const client of list) {
+        if ("focus" in client) return client.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(targetUrl);
+    })
+  );
+});

@@ -58,6 +58,7 @@ export function mapChildRow(r) {
     consentVerifiedAt: r.consent_verified_at,
     consentReviewStatus: r.consent_review_status,
     consentReviewRequestedAt: r.consent_review_requested_at,
+    consentReviewRequestedBy: r.consent_review_requested_by,
     consentReviewedBy: r.consent_reviewed_by,
     consentReviewedAt: r.consent_reviewed_at,
     consentReviewNote: r.consent_review_note,
@@ -133,6 +134,38 @@ export function mapFollowUpRow(r) {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
+}
+
+// Indexes mapped follow-ups (mapFollowUpRow output) so a child's follow-up is
+// found by child_id — the only key that is the same for every viewer. `byName`
+// is a backwards-compatible fallback for older rows that have no child_id
+// (their child_name holds the student number or, for older psychologist
+// saves, the real name). When a child has several follow-ups the most
+// recently updated one wins, whatever order the rows arrive in.
+export function indexFollowUps(list) {
+  const stamp = (f) => String(f.updatedAt || f.createdAt || "");
+  const byId = {};
+  const byName = {};
+  [...(list || [])]
+    .sort((a, b) => stamp(a).localeCompare(stamp(b)))
+    .forEach((f) => {
+      if (f.childId) byId[f.childId] = f;
+      if (f.childName) byName[f.childName] = f;
+    });
+  return { byId, byName };
+}
+
+// Look a child up in an indexFollowUps() result.
+export function findFollowUp(index, child) {
+  if (!index || !child) return null;
+  const id = child.id || child.childId;
+  return (
+    (id && index.byId[id]) ||
+    (child.studentNumber && index.byName[child.studentNumber]) ||
+    (child.name && index.byName[child.name]) ||
+    (child.childName && index.byName[child.childName]) ||
+    null
+  );
 }
 
 export function mapMessageRow(r) {

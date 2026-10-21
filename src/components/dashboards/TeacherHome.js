@@ -176,6 +176,7 @@ const T = {
       "View and screen the children in your own class.",
 
     myStudents: "My Class",
+    myStudentsSub: "Children you added or screened — not the full PuzzleBox dataset.",
   
       
 
@@ -431,7 +432,7 @@ const T = {
   },
 
   xh: {
-    roleLabel: "Umfundisi",
+    roleLabel: "uThishala",
 
     navHome: "Ikhaya Lam",
     navMessages: "Imiyalezo",
@@ -1562,6 +1563,7 @@ export default function TeacherHome({ user, profile, onOpenMember }) {
       <ScreenerWithOffline
         user={user}
         profile={profile}
+        lang={lang}
         initialChild={screenerChild}
         preferOffline={screenerOffline}
         onExit={() => {
@@ -1783,6 +1785,7 @@ export default function TeacherHome({ user, profile, onOpenMember }) {
                       : messages
                           .slice(0, 5)
                           .map((m) => ({
+                            data: m,
                             icon: "envelope",
                             color: "#F26522",
                             title: m.childName,

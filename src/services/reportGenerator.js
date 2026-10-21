@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
+import { DOMAIN_BENCHMARK, STATUS, isActiveFlag, avgOf } from "./analyticsData";
 
 const BRAND = {
   teal: [0, 155, 141],
@@ -22,7 +23,7 @@ const DOMAIN_KEYS = [
   "moral",
 ];
 
-const DOMAIN_BENCHMARK = 70;
+// DOMAIN_BENCHMARK is shared with the on-screen dashboards (analyticsData.js).
 const PAGE_HEIGHT = 297;
 const BOTTOM_MARGIN = 18;
 
@@ -34,13 +35,25 @@ function ensurePageSpace(doc, y, needed = 30) {
   return y;
 }
 
+// Average of a domain over a group; null when no child in the group has a
+// score for it (shown as "–", never as a fake 0%).
 function domainAvgForGroup(group, key) {
-  if (!group.length) return 0;
-
-  return Math.round(
-    group.reduce((a, c) => a + (c[key] || 0), 0) / group.length
-  );
+  return avgOf(group, key);
 }
+
+const pctText = v => (v === null || v === undefined ? "–" : `${v}%`);
+
+// "#E8175D" -> [232, 23, 93]. jsPDF needs numbers; spreading the hex string
+// produced a corrupt colour operator in the PDF.
+function toRgb(color) {
+  if (Array.isArray(color)) return color;
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(color || "").trim());
+  if (!m) return BRAND.teal;
+  const n = parseInt(m[1], 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+const labelOf = v => (v === null || v === undefined || v === "" ? "Unknown" : String(v));
 
 function getGroups(children, compareMode) {
   if (compareMode === "school") {
@@ -48,7 +61,7 @@ function getGroups(children, compareMode) {
   }
 
   if (compareMode === "age") {
-    return [...new Set(children.map(c => c.age).filter(Boolean))];
+    return [...new Set(children.map(c => c.age).filter(a => a !== null && a !== undefined && a !== ""))].sort((a, b) => a - b);
   }
 
   if (compareMode === "gender") {
@@ -91,7 +104,8 @@ function genderLabel(g) {
 // ─────────────────────────────────────────────────────────────────────────────
 // PDF EXPORT
 // ─────────────────────────────────────────────────────────────────────────────
-export function downloadPDF({ children, compareMode, insights, lang }) {
+// `lang` is accepted for API compatibility; the PDF is English only.
+export function downloadPDF({ children, compareMode, insights }) {
   const doc = new jsPDF({
     orientation: "portrait",
     unit: "mm",
@@ -154,18 +168,15 @@ export function downloadPDF({ children, compareMode, insights, lang }) {
 
   // SUMMARY SECTION
   const total = children.length;
-  const flagged = children.filter(c => c.flagged).length;
-  const onTrack = children.filter(c => c.status === "On Track").length;
-  const progressing = children.filter(c => c.status === "Progressing").length;
+  const flagged = children.filter(isActiveFlag).length;
+  const onTrack = children.filter(c => c.status === STATUS.ON_TRACK).length;
+  const progressing = children.filter(c => c.status === STATUS.PROGRESSING).length;
   const concerns = children.filter(
-    c => c.status === "Developmental Concerns"
+    c => c.status === STATUS.CONCERNS
   ).length;
+  const notScored = children.filter(c => c.status === STATUS.NOT_SCORED).length;
 
-  const avgScore = total
-    ? Math.round(
-        children.reduce((a, c) => a + (c.total || 0), 0) / total
-      )
-    : 0;
+  const avgScore = avgOf(children, "total") ?? 0;
 
   doc.setFontSize(10);
   doc.setFont("helvetica", "bold");
@@ -243,7 +254,8 @@ export function downloadPDF({ children, compareMode, insights, lang }) {
   doc.setTextColor(...BRAND.gray);
 
   doc.text(
-    `On Track: ${onTrack} (${onTrackPct}%)    Progressing: ${progressing} (${progressingPct}%)    Developmental Concerns: ${concerns} (${concernsPct}%)`,
+    `On Track: ${onTrack} (${onTrackPct}%)    Progressing: ${progressing} (${progressingPct}%)    Developmental Concerns: ${concerns} (${concernsPct}%)` +
+      (notScored ? `    Not scored: ${notScored}` : ""),
     margin,
     y
   );
@@ -282,7 +294,7 @@ export function downloadPDF({ children, compareMode, insights, lang }) {
         "F"
       );
 
-      doc.setFillColor(...ins.color);
+      doc.setFillColor(...toRgb(ins.color));
       doc.rect(margin, y, 2.5, boxHeight, "F");
 
       doc.setFontSize(8);
@@ -320,10 +332,12 @@ export function downloadPDF({ children, compareMode, insights, lang }) {
 
       return [
         domainNames[i],
-        `${val}%`,
+        pctText(val),
         `${DOMAIN_BENCHMARK}%`,
-        val >= DOMAIN_BENCHMARK
-          ? "Above benchmark"
+        val === null
+          ? "No data"
+          : val >= DOMAIN_BENCHMARK
+          ? "At or above benchmark"
           : `${DOMAIN_BENCHMARK - val}% below benchmark`,
       ];
     });
@@ -382,7 +396,9 @@ export function downloadPDF({ children, compareMode, insights, lang }) {
           const val = parseFloat(data.row.cells[1].raw);
 
           data.cell.styles.textColor =
-            val >= DOMAIN_BENCHMARK
+            Number.isNaN(val)
+              ? BRAND.gray
+              : val >= DOMAIN_BENCHMARK
               ? BRAND.teal
               : BRAND.pink;
         }
@@ -410,7 +426,7 @@ export function downloadPDF({ children, compareMode, insights, lang }) {
 
     const rows = DOMAIN_KEYS.map((key, i) => {
       const groupVals = groups.map(g => {
-        return `${domainAvgForGroup(groupedData[g], key)}%`;
+        return pctText(domainAvgForGroup(groupedData[g], key));
       });
 
       return [domainNames[i], ...groupVals];
@@ -461,18 +477,19 @@ export function downloadPDF({ children, compareMode, insights, lang }) {
   const schoolCounts = {};
 
   children.forEach(c => {
-    schoolCounts[c.school] = (schoolCounts[c.school] || 0) + 1;
+    const k = labelOf(c.school);
+    schoolCounts[k] = (schoolCounts[k] || 0) + 1;
   });
 
   const schoolRows = Object.entries(schoolCounts).map(
     ([name, count]) => {
-      const group = children.filter(c => c.school === name);
+      const group = children.filter(c => labelOf(c.school) === name);
 
       const concernRate = group.length
         ? Math.round(
             (
               group.filter(
-                c => c.status === "Developmental Concerns"
+                c => c.status === STATUS.CONCERNS
               ).length /
               group.length
             ) * 100
@@ -534,7 +551,8 @@ export function downloadPDF({ children, compareMode, insights, lang }) {
   const langCounts = {};
 
   children.forEach(c => {
-    langCounts[c.language] = (langCounts[c.language] || 0) + 1;
+    const k = labelOf(c.language);
+    langCounts[k] = (langCounts[k] || 0) + 1;
   });
 
   const langRows = Object.entries(langCounts).map(
@@ -548,7 +566,7 @@ export function downloadPDF({ children, compareMode, insights, lang }) {
   doc.setFontSize(10);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(...BRAND.dark);
-  doc.text("Language of Assessment", margin, y);
+  doc.text("Home Language", margin, y);
 
   y += 3;
 
@@ -656,14 +674,13 @@ export function downloadExcel({ children, compareMode }) {
 
   // SUMMARY
   const total = children.length;
-  const flagged = children.filter(c => c.flagged).length;
-  const onTrack = children.filter(c => c.status === "On Track").length;
+  const flagged = children.filter(isActiveFlag).length;
+  const onTrack = children.filter(c => c.status === STATUS.ON_TRACK).length;
+  const progressing = children.filter(c => c.status === STATUS.PROGRESSING).length;
+  const concerns = children.filter(c => c.status === STATUS.CONCERNS).length;
+  const notScored = children.filter(c => c.status === STATUS.NOT_SCORED).length;
 
-  const avgScore = total
-    ? Math.round(
-        children.reduce((a, c) => a + (c.total || 0), 0) / total
-      )
-    : 0;
+  const avgScore = avgOf(children, "total") ?? 0;
 
   const summaryData = [
     ["The Puzzle Project — Overview Report"],
@@ -673,11 +690,13 @@ export function downloadExcel({ children, compareMode }) {
     ["Total Screened", total],
     ["Flagged", flagged],
     ["On Track", onTrack],
+    ["Progressing", progressing],
+    ["Developmental Concerns", concerns],
+    ["Not Scored", notScored],
     ["Average Score (%)", avgScore],
   ];
 
   const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
-  wsSummary["!freeze"] = { xSplit: 0, ySplit: 4 };
 
   XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
 
@@ -695,7 +714,7 @@ export function downloadExcel({ children, compareMode }) {
           domainNames[i],
           val,
           DOMAIN_BENCHMARK,
-          val >= DOMAIN_BENCHMARK ? "Above" : "Below",
+          val === null ? "No data" : val >= DOMAIN_BENCHMARK ? "At or above" : "Below",
         ];
       }),
     ];
@@ -726,7 +745,6 @@ export function downloadExcel({ children, compareMode }) {
   }
 
   const wsDomains = XLSX.utils.aoa_to_sheet(domainSheetData);
-  wsDomains["!freeze"] = { xSplit: 0, ySplit: 1 };
 
   XLSX.utils.book_append_sheet(wb, wsDomains, "Domain Performance");
 
@@ -740,34 +758,33 @@ export function downloadExcel({ children, compareMode }) {
 
       // The child's coded ID. If a child has none, a fallback like C001 is made
   // from their position in the list, so every row is still identifiable.
-    "Child ID": c.id || `C${String(i + 1).padStart(3, "0")}`,
+    "Child ID": c.studentNumber || `C${String(i + 1).padStart(3, "0")}`,
 
      // Background details used for the analytics, with no personal identity.
     Age: c.age,
     Gender: c.gender,
     School: c.school,
-    Language: c.language,
+    "Home Language": c.language,
 
       // Overall result: status, total score, and whether the child was flagged
   // for follow-up (shown as Yes/No instead of true/false).
     Status: c.status,
-    "Total Score": c.total,
-    Flagged: c.flagged ? "Yes" : "No",
+    "Total Score": c.total ?? "",
+    Flagged: isActiveFlag(c) ? "Yes" : "No",
 
      // Score for each developmental domain.
-    Cognitive: c.cognitive,
-    "Fine Motor": c.motor,
-    "Language Score": c.language_score,
-    Social: c.social,
-    Emotion: c.emotion,
-    Moral: c.moral,
+    Cognitive: c.cognitive ?? "",
+    "Fine Motor": c.motor ?? "",
+    "Language Score": c.language_score ?? "",
+    Social: c.social ?? "",
+    Emotion: c.emotion ?? "",
+    Moral: c.moral ?? "",
 
     // The date the child was screened.
     Date: c.date,
   }));
 
   const wsChildren = XLSX.utils.json_to_sheet(childRows);
-  wsChildren["!freeze"] = { xSplit: 0, ySplit: 1 };
 
   XLSX.utils.book_append_sheet(wb, wsChildren, "Children Data");
 

@@ -24,7 +24,8 @@ import { applyShowcaseMode } from "../utils/showcaseMode";
 // scoring predicates in puzzleBoxContent.v1.js — just built from
 // (score, min, max) rows an admin can edit instead of a JS function.
 export function scoreFromAgeTable(table, age, value) {
-  const rows = table[age] || table[6];
+  // Only ages that have a table are scored (no silent fallback to age-6 norms).
+  const rows = table[age];
   if (!rows) return null;
   for (const row of rows) {
     if (row.test(value)) return row.score;

@@ -8,9 +8,12 @@
 // quietly disagreeing about what counts as "verified".
 //
 // The actual reading of the form (does it look filled in, even if
-// handwritten) happens server-side in the validate-consent-form Edge
-// Function, which calls an AI vision model — see that function's header
-// comment for the required Supabase secret (ANTHROPIC_API_KEY).
+// handwritten) is meant to happen server-side in a "validate-consent-form"
+// Edge Function that calls an AI vision model. NOTE: that function is not in
+// supabase/functions in this repo. Until it is deployed every upload comes
+// back "could not verify" and goes to an admin for manual review. When it is
+// added it should use a Gemini key secret (like translator-chat, which reads
+// Puzzle_Play_Translator_Gemini_API_Key) — NOT ANTHROPIC_API_KEY.
 
 import { supabase } from "./supabaseClient";
 
@@ -36,23 +39,61 @@ export const REQUIRED_CONSENT_FIELDS = [
 // valid:false with notes explaining why, since "the AI check itself broke"
 // should still let the teacher see what was uploaded and retry, rather
 // than losing the file.
+// Storage keys only allow a safe character set; spaces, #, ?, accents or emoji
+// in a phone's file name would make the upload fail or the URL break.
+export function safeStorageName(name) {
+  const raw = String(name || "consent-form");
+  const dot = raw.lastIndexOf(".");
+  const ext = dot > 0 ? raw.slice(dot).toLowerCase().replace(/[^.a-z0-9]/g, "").slice(0, 8) : "";
+  const base = (dot > 0 ? raw.slice(0, dot) : raw)
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Za-z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 60);
+  return (base || "consent-form") + ext;
+}
+
 export async function uploadAndVerifyConsentForm({ childId, file }) {
   if (!childId) throw new Error("A child record is required before a consent form can be attached.");
   if (!file) throw new Error("No file selected.");
 
-  const path = `${childId}/${Date.now()}-${file.name}`;
+  const path = `${childId}/${Date.now()}-${safeStorageName(file.name)}`;
   const { error: uploadErr } = await supabase.storage
     .from(CONSENT_BUCKET)
     .upload(path, file, { upsert: true, contentType: file.type });
   if (uploadErr) throw new Error("Could not upload the consent form — " + uploadErr.message);
 
+  // NOTE: this is a public URL, so the "consent-forms" bucket has to be public
+  // for the form to open (the dashboards use this URL as-is in links/iframes).
+  // Moving to a private bucket + signed URLs means changing every place that
+  // reads consent_form_url (ChildrenTable, TeacherHome, AdminHome).
   const { data: pub } = supabase.storage.from(CONSENT_BUCKET).getPublicUrl(path);
   const fileUrl = pub.publicUrl;
 
+  // 1) Save the file onto the child's row. The database trigger
+  //    (children_before_update) resets the verification to "not verified" for
+  //    any new file, whatever we send — a teacher's browser cannot mark a form
+  //    as verified.
+  const nowIso = new Date().toISOString();
+  const { error: saveErr } = await supabase
+    .from("children")
+    .update({
+      consent_form_url: fileUrl,
+      consent_file_name: file.name,
+      consent_uploaded_at: nowIso,
+    })
+    .eq("id", childId);
+  if (saveErr) throw new Error("Uploaded, but could not save the record — " + saveErr.message);
+
+  // 2) Ask the server to check the form. The validate-consent-form Edge
+  //    Function writes the verdict (consent_verified / _verified_at /
+  //    _verification_notes) itself with the service role, and returns it so we
+  //    can show it straight away.
   let verification = { valid: false, missingFields: [], notes: "" };
   try {
     const { data, error: fnErr } = await supabase.functions.invoke("validate-consent-form", {
-      body: { fileUrl, fileType: file.type },
+      body: { childId, fileUrl, fileType: file.type },
     });
     if (fnErr) throw fnErr;
     verification = {
@@ -61,36 +102,22 @@ export async function uploadAndVerifyConsentForm({ childId, file }) {
       notes: data?.notes || "",
     };
   } catch (err) {
-    // The upload itself succeeded — don't lose that. Surface this as "not
-    // verified yet" with an explanation, rather than throwing the upload
-    // away because the verification step couldn't run (e.g. the
-    // ANTHROPIC_API_KEY secret isn't set yet on a fresh deploy).
+    // The upload itself succeeded — don't lose that. The form simply stays
+    // "not verified"; "service unavailable" is what lets the UI offer the
+    // "send to an admin" fallback.
     verification = {
       valid: false,
       missingFields: [],
-      notes: "Could not automatically verify this form — " + (err?.message || "the verification service is unavailable") + ". A reviewer will need to check it manually before a screening can start.",
+      notes: "Could not automatically verify this form (verification service unavailable" + (err?.message ? ": " + err.message : "") + "). A reviewer will need to check it manually before a screening can start.",
     };
   }
-
-  const nowIso = new Date().toISOString();
-  const { error: saveErr } = await supabase
-    .from("children")
-    .update({
-      consent_form_url: fileUrl,
-      consent_file_name: file.name,
-      consent_uploaded_at: nowIso,
-      consent_verified: verification.valid,
-      consent_verification_notes: verification.notes,
-      consent_verified_at: nowIso,
-    })
-    .eq("id", childId);
-  if (saveErr) throw new Error("Uploaded, but could not save the record — " + saveErr.message);
 
   return {
     url: fileUrl,
     fileName: file.name,
     fileType: file.type,
     uploadedAt: nowIso,
+    verifiedAt: verification.valid ? nowIso : null,
     valid: verification.valid,
     missingFields: verification.missingFields,
     notes: verification.notes,
@@ -102,7 +129,9 @@ export async function uploadAndVerifyConsentForm({ childId, file }) {
 // limited / unavailable ("high demand", 429, 503 ...), the teacher can send
 // the already-uploaded form to the admin dashboard instead. The admin opens
 // the file and accepts or rejects it.
-const OVERLOAD_RE = /high demand|overload|too many requests|rate.?limit|quota|unavailable|try again later|\b(429|503)\b|could not automatically verify/i;
+// Only text that means the CHECKING SERVICE was busy/down matches; a form that
+// was read and found incomplete never does.
+const OVERLOAD_RE = /high demand|overload|too many requests|rate.?limit|quota (exceeded|exhausted)|service unavailable|temporarily unavailable|try again later|\b(429|502|503|504)\b/i;
 
 export function isOverloadNote(notes) {
   return OVERLOAD_RE.test(notes || "");

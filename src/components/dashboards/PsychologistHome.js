@@ -10,6 +10,8 @@ import React, { useState, useEffect, useMemo, useCallback } from "react";
 import Doodle from "../shared/Doodle";
 import { supabase } from "../../services/supabaseClient";
 import { mapChildRow, mapFollowUpRow, mapMessageRow, mapPuzzleboxScreeningRow } from "../../utils/mappers";
+import { useAnalyticsData } from "../../services/analyticsData";
+
 import RoleSidebar from "../shared/RoleSidebar";
 import AnalyticsPanels, { ANALYTICS_LABELS, ANALYTICS_SUBS } from "../analytics/AnalyticsPanels";
 import RoleHero from "../shared/RoleHero";
@@ -17,6 +19,10 @@ import StatRing from "../analytics/StatRing";
 import TodayList from "../shared/TodayList";
 import "./TeacherHome.css"; // shared th-quicklink styles
 import "../shared/RoleHomeKit.css";
+
+// Needs follow-up = flagged and not yet marked resolved. (Defined here so this
+// file doesn't depend on a newer analyticsData.js.)
+const isActiveFlag = (c) => !!c && !!c.flagged && !c.resolved;
 const T = {
   en: {
     roleLabel: "Psychologist",
@@ -218,6 +224,8 @@ export default function PsychologistHome({ user, profile, onOpenMember }) {
   const [activePage, setActivePage] = useState("home");
   const [lang, setLang] = useState("en");
   const [children, setChildren] = useState([]);
+  // Derived (real-screening) records — the legacy children.flagged column can be stale.
+  const { allChildren } = useAnalyticsData();
   const [rawFollowUps, setFollowUps] = useState([]);
   const [messageCount, setMessageCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -331,7 +339,7 @@ export default function PsychologistHome({ user, profile, onOpenMember }) {
     return t.goodEvening;
   }, [t]);
  
-  const flaggedChildren = useMemo(() => children.filter((c) => c.flagged), [children]);
+  const flaggedChildren = useMemo(() => allChildren.filter(isActiveFlag), [allChildren]);
   const pendingFollowUps = useMemo(
     () => followUps.filter((f) => f.followUpType && f.followUpType !== "fu4" && f.followUpType !== "fu1").length,
     [followUps]
@@ -608,6 +616,7 @@ export default function PsychologistHome({ user, profile, onOpenMember }) {
                   emptySub={t.noNotificationsSub}
                   onItemClick={(n) => openReview(n)}
                   items={loading ? null : notifications.slice(0, 5).map((n) => ({
+                    data: n,
                     icon: "notes", color: n.readAt ? "#8888a8" : "#009B8D",
                     title: n.childName, meta: `${n.school || ""} · ${n.teacherName || n.teacherEmail || ""}`.replace(/^ · /, ""),
                     badge: n.readAt ? undefined : "New",
@@ -622,6 +631,7 @@ export default function PsychologistHome({ user, profile, onOpenMember }) {
                   emptySub={t.noFollowUpsSub}
                   onItemClick={(f) => setSelected(f)}
                   items={loading ? null : followUps.slice(0, 5).map((f) => ({
+                    data: f,
                     icon: "calendar", color: (followUpColors[f.followUpType] || followUpColors.fu1).color,
                     title: f.childName, meta: `${f.school} · ${t.date}: ${f.followUpDate || "—"}`,
                     badge: t[f.followUpType] || f.followUpType,
